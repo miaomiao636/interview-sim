@@ -103,8 +103,6 @@ Skill 是完整应用的启动入口，不能只下载 `SKILL.md`。安装、ZIP
 | [更新记录](CHANGELOG.md) | 版本内容与验证范围 |
 | [贡献指南](CONTRIBUTING.md) | 开发、测试、脱敏反馈 |
 
-操作演示视频将在录制并检查隐私后补充；当前请按操作指南体验。
-
 ## 许可证与致谢
 
 采用 [MIT License](LICENSE)。
