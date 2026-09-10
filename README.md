@@ -8,6 +8,12 @@
 
 > **公开测试版 v1.4.0-beta.2**：包含完整应用与 Skill，不是独立桌面安装包或托管网站。主要在 macOS 桌面验证；需自备模型 API，费用由提供商收取。已知限制见下文，不承诺招聘结果。
 
+## 演示视频
+
+[▶ 查看 / 下载 89 秒操作演示（MP4）](https://github.com/miaomiao636/interview-sim/releases/download/v1.4.0-beta.2/interview-sim-demo.mp4)
+
+视频展示岗位材料导入、AI 解析、面试配置与模拟作答。为避免公开本机信息，已裁去浏览器标签栏和 Dock，并对文件选择窗口做模糊处理。
+
 ## 项目结构图
 
 [![Interview Sim 项目结构：Skill 与命令行启动本地服务，网页使用文档解析、题纲、对话和报告模块；本机保存配置与记录，模型请求发往各自的 API。](docs/architecture/interview-sim.svg)](docs/architecture/interview-sim.svg)
