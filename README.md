@@ -6,7 +6,7 @@
 
 [快速开始](docs/QUICKSTART.md) · [模型配置](docs/CONFIGURATION.md) · [操作指南](docs/USER_GUIDE.md) · [常见问题](docs/FAQ.md) · [提交问题](https://github.com/miaomiao636/interview-sim/issues)
 
-> **公开测试版 v1.4.0-beta.1**：包含完整应用与 Skill，不是独立桌面安装包或托管网站。主要在 macOS 桌面验证；需自备模型 API，费用由提供商收取。已知限制见下文，不承诺招聘结果。
+> **公开测试版 v1.4.0-beta.2**：包含完整应用与 Skill，不是独立桌面安装包或托管网站。主要在 macOS 桌面验证；需自备模型 API，费用由提供商收取。已知限制见下文，不承诺招聘结果。
 
 ## 项目结构图
 
