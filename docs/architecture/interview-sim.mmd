@@ -1,0 +1,30 @@
+flowchart TB
+  user["使用者"] --> skill["Agent / Skill"]
+  skill --> cli["CLI 启动器"]
+  cli --> api["FastAPI · 127.0.0.1"]
+  cli --> web["本地网页"]
+  user --> web
+  web <-->|同源 HTTP| api
+  subgraph local["本机处理与存储"]
+    api --> files["文件提取 · DOCX / PDF / 图片 OCR"]
+    files --> plan["岗位解析与题纲"]
+    api --> chat["面试对话 · 手动作答 / 跳题"]
+    plan --> chat
+    api --> config["设置与岗位预设"]
+    chat -->|选择生成报告| report["分阶段报告 · 校验 / 缓存 / 重试"]
+    chat -->|仅结束或保存作答| store["本地 JSON 记录"]
+    report --> store
+    config --> store
+    plan --> store
+  end
+  subgraph remote["使用者配置的远程 API"]
+    llm["对话模型"]
+    analysis["分析模型"]
+    asr["ASR"]
+    tts["TTS"]
+  end
+  chat -.-> llm
+  plan -.-> analysis
+  report -.-> analysis
+  api -.-> asr
+  api -.-> tts

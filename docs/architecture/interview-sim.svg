@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="940" viewBox="0 0 1440 940" role="img" aria-labelledby="title desc">
+<title id="title">Interview Sim 项目结构图</title>
+<desc id="desc">Skill 和 CLI 启动本地 FastAPI 服务，浏览器使用岗位解析、对话、报告与设置模块。本地 JSON 保存配置和记录；对话、分析、语音识别、语音合成请求发送到使用者配置的远程 API。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#6c8980"/></marker>
+<style>text{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;fill:#193d33}.zone{fill:#fff;stroke:#d7e3dd;stroke-width:1.5}.local{fill:#eef7f1;stroke:#90b5a3;stroke-width:1.5}.entry{fill:#edf5fa;stroke:#8ab0c3;stroke-width:1.5}.data{fill:#f3f0fa;stroke:#aca1c7;stroke-width:1.5}.provider{fill:#f7f6f0;stroke:#bfbda7;stroke-width:1.5}.node-title{font-size:20px;font-weight:650}.node-text{font-size:15px;fill:#4c655c}.zone-title{font-size:19px;font-weight:600}.edge{fill:none;stroke:#6c8980;stroke-width:1.8}.remote-edge{stroke-dasharray:5 5}.label{font-size:13px;fill:#607b70}</style></defs>
+<rect width="1440" height="940" fill="#f4f7f3"/>
+<text x="40" y="54" font-size="29" font-weight="700">Interview Sim</text>
+<text x="40" y="87" font-size="17" fill="#587267">本地 AI 面试工作台 · 项目结构与数据边界</text>
+<text x="1400" y="57" text-anchor="end" font-size="14">PUBLIC BETA · 1.4.0</text>
+<rect class="zone" x="32" y="119" width="1376" height="180" rx="18"/>
+<text class="zone-title" x="56" y="152">01  启动与桌面交互</text>
+<path class="edge" d="M326 222H376" marker-end="url(#arrow)"/><path class="edge" d="M652 222H702" marker-end="url(#arrow)"/><path class="edge" d="M978 222H1028" marker-end="url(#arrow)"/>
+<g><rect class="entry" x="56" y="180" width="270" height="88" rx="12"/><text class="node-title" x="74" y="211">Agent / Skill</text><text class="node-text" x="74" y="236">找到完整项目与 Python 环境</text></g>
+<g><rect class="entry" x="376" y="180" width="276" height="88" rx="12"/><text class="node-title" x="394" y="211">命令行启动器</text><text class="node-text" x="394" y="236">选端口 · 启动服务 · 打开网页</text></g>
+<g><rect class="entry" x="702" y="180" width="276" height="88" rx="12"/><text class="node-title" x="720" y="211">本地 Web 服务</text><text class="node-text" x="720" y="236">FastAPI · 127.0.0.1</text></g>
+<g><rect class="entry" x="1028" y="180" width="356" height="88" rx="12"/><text class="node-title" x="1046" y="211">桌面浏览器工作台</text><text class="node-text" x="1046" y="236">岗位 / 面试 / 报告 / 设置</text></g>
+<text class="label" x="1002" y="208" text-anchor="middle">同源</text>
+<rect class="zone" x="32" y="333" width="1016" height="454" rx="18"/>
+<rect class="zone" x="1080" y="333" width="328" height="454" rx="18"/>
+<text class="zone-title" x="56" y="372">02  本机业务与文件处理</text>
+<text class="zone-title" x="1104" y="372">03  使用者配置的远程 API</text>
+<path class="edge" d="M840 268V316H529V410" marker-end="url(#arrow)"/>
+<path class="edge" d="M340 459H394" marker-end="url(#arrow)"/><path class="edge" d="M664 459H718" marker-end="url(#arrow)"/>
+<path class="edge" d="M529 509V620" marker-end="url(#arrow)"/><path class="edge" d="M863 509V620" marker-end="url(#arrow)"/><path class="edge" d="M718 671H664" marker-end="url(#arrow)"/><path class="edge" d="M340 671H394" marker-end="url(#arrow)"/>
+<path class="edge" d="M759 509V567H691V608"/>
+<path class="edge" d="M691 608H647V620" marker-end="url(#arrow)"/>
+<text class="label" x="552" y="553">题纲与会话</text>
+<text class="label" x="709" y="555">仅结束 / 保存</text>
+<text class="label" x="880" y="571">选择生成报告</text>
+<g><rect class="local" x="70" y="410" width="270" height="99" rx="12"/><text class="node-title" x="88" y="441">文件提取</text><text class="node-text" x="88" y="466">TXT / MD / DOCX / 文本 PDF</text><text class="node-text" x="88" y="487">图片 → 本地 Vision / Tesseract</text></g>
+<g><rect class="local" x="394" y="410" width="270" height="99" rx="12"/><text class="node-title" x="412" y="441">岗位解析与面试题纲</text><text class="node-text" x="412" y="466">JD + 简历 + 公司材料</text><text class="node-text" x="412" y="487">模型输出校验 · 首题持久化</text></g>
+<g><rect class="local" x="718" y="410" width="290" height="99" rx="12"/><text class="node-title" x="736" y="441">面试对话与语音</text><text class="node-text" x="736" y="466">参考已有回答 · 手动确认发送</text><text class="node-text" x="736" y="487">分段转写 / 跳题 / 声音播放</text></g>
+<g><rect class="local" x="70" y="620" width="270" height="118" rx="12"/><text class="node-title" x="88" y="651">设置与岗位预设</text><text class="node-text" x="88" y="676">独立模型连接 · 密钥只写不读</text><text class="node-text" x="88" y="697">多岗位 JD / 简历 / 训练目标</text></g>
+<g><rect class="data" x="394" y="620" width="270" height="118" rx="12"/><text class="node-title" x="412" y="651">本地 JSON 数据</text><text class="node-text" x="412" y="676">config.json · presets.json</text><text class="node-text" x="412" y="697">sessions/*.json</text><text class="node-text" x="412" y="718">个人目录：~/.interview-sim/</text></g>
+<g><rect class="local" x="718" y="620" width="290" height="118" rx="12"/><text class="node-title" x="736" y="651">分阶段证据报告</text><text class="node-text" x="736" y="676">分批分析 → 汇总 → 保存</text><text class="node-text" x="736" y="697">校验 / 缓存 / 失败续跑 / 导出</text></g>
+<path class="edge remote-edge" d="M529 410V392H1064V731M1008 467H1064M1008 671H1064"/>
+<path class="edge remote-edge" d="M1064 444H1104" marker-end="url(#arrow)"/><path class="edge remote-edge" d="M1064 532H1104" marker-end="url(#arrow)"/><path class="edge remote-edge" d="M1064 620H1104" marker-end="url(#arrow)"/><path class="edge remote-edge" d="M1064 708H1104" marker-end="url(#arrow)"/>
+<g><rect class="provider" x="1104" y="410" width="280" height="72" rx="12"/><text class="node-title" x="1122" y="441">对话模型</text><text class="node-text" x="1122" y="466">追问与下一题</text></g>
+<g><rect class="provider" x="1104" y="498" width="280" height="72" rx="12"/><text class="node-title" x="1122" y="529">分析模型</text><text class="node-text" x="1122" y="554">岗位提取 / 题纲 / 报告</text></g>
+<g><rect class="provider" x="1104" y="586" width="280" height="72" rx="12"/><text class="node-title" x="1122" y="617">ASR 语音识别</text><text class="node-text" x="1122" y="642">接收录音片段 → 返回文字</text></g>
+<g><rect class="provider" x="1104" y="674" width="280" height="72" rx="12"/><text class="node-title" x="1122" y="705">TTS 语音合成</text><text class="node-text" x="1122" y="730">接收文本 → 返回 PCM 音频</text></g>
+<rect class="zone" x="32" y="817" width="1376" height="95" rx="18"/>
+<text x="56" y="850" font-size="17" font-weight="650">数据边界</text>
+<text x="56" y="881" font-size="16">原文件不长期保存；必要的文字 / 音频会发送至模型 API。仅结束不发起报告调用。无账号登录、云同步或公网部署。</text>
+</svg>

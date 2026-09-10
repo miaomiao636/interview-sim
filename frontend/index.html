@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>面试实验室 · AI 模拟面试</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">M</div>
+        <div>
+          <strong>面试实验室</strong>
+          <span>Evidence coaching</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="功能导航">
+        <button class="nav-btn active" data-view="config" type="button">
+          <span class="nav-index">01</span><span>准备面试</span>
+        </button>
+        <button class="nav-btn" data-view="interview" type="button" disabled>
+          <span class="nav-index">02</span><span>模拟现场</span>
+        </button>
+        <button class="nav-btn" data-view="report" type="button" disabled>
+          <span class="nav-index">03</span><span>证据报告</span>
+        </button>
+        <button class="nav-btn" data-view="history" type="button">
+          <span class="nav-index">04</span><span>训练记录</span>
+        </button>
+        <button class="nav-btn" data-view="settings" type="button">
+          <span class="nav-index">05</span><span>系统设置</span>
+        </button>
+      </nav>
+
+      <div id="service-status" class="sidebar-note" role="status" aria-live="polite">
+        <span class="status-dot"></span>
+        <div>
+          <strong id="service-status-title">正在检查服务</strong>
+          <p id="service-status-detail">记录保存在当前电脑；AI 推理会调用远程 MiMo API。</p>
+        </div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section id="view-config" class="view active" aria-labelledby="config-title">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">PREPARE</p>
+            <h1 id="config-title">让每一次练习都有目标</h1>
+            <p class="page-lead">提供岗位与真实经历，系统会先建立考察蓝图，再进入模拟现场。</p>
+          </div>
+          <span class="stage-badge">阶段 1 / 3</span>
+        </header>
+
+        <section class="surface preset-section" aria-labelledby="presets-title">
+          <div class="section-heading"><div><p class="eyebrow">YOUR ROLES</p><h2 id="presets-title">我的岗位预设</h2></div><button id="btn-new-preset" class="btn secondary" type="button">新建预设</button></div>
+          <div id="preset-list" class="preset-list" aria-live="polite">正在读取岗位预设…</div>
+        </section>
+        <details id="quick-prep" class="quick-prep"><summary>临时面试 · 不保存岗位，直接填写材料</summary>
+        <form id="interview-config-form" class="config-layout">
+          <div class="source-column">
+            <article class="surface source-card">
+              <div class="section-heading">
+                <div>
+                  <span class="field-step">01</span>
+                  <h2>目标岗位</h2>
+                </div>
+                <label class="file-action" for="jd-file"><strong>导入文件</strong><small>图片 / Word / PDF / TXT / MD</small></label>
+                <input id="jd-file" class="sr-only" type="file" accept=".txt,.md,.docx,.pdf,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,image/png,image/jpeg,image/webp" data-target="input-jd">
+              </div>
+              <label class="field-label" for="input-target-role">目标岗位名称</label>
+              <input id="input-target-role" class="text-input" type="text" maxlength="160" placeholder="例如：AI 产品经理">
+              <label class="field-label" for="input-company">公司名称</label>
+              <input id="input-company" class="text-input" maxlength="160" placeholder="填写后会用于公司相关问题">
+              <label class="field-label" for="input-company-context">公司背景（选填）</label>
+              <textarea id="input-company-context" rows="3" maxlength="6000" placeholder="公司业务、产品或客户信息，可从 JD 或官网摘录"></textarea>
+              <label class="field-label" for="input-jd">岗位描述 JD</label>
+              <textarea id="input-jd" rows="11" maxlength="30000" placeholder="粘贴完整岗位描述，包括职责、技能要求与加分项…" required></textarea>
+              <div class="field-meta"><span id="jd-count">0 字</span><span>建议保留任职要求原文</span></div>
+            </article>
+
+            <article class="surface source-card">
+              <div class="section-heading">
+                <div>
+                  <span class="field-step">02</span>
+                  <h2>候选人背景</h2>
+                </div>
+                <label class="file-action" for="resume-file"><strong>导入文件</strong><small>图片 / Word / PDF / TXT / MD</small></label>
+                <input id="resume-file" class="sr-only" type="file" accept=".txt,.md,.docx,.pdf,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,image/png,image/jpeg,image/webp" data-target="input-resume">
+              </div>
+              <label class="field-label" for="input-resume">个人简历</label>
+              <textarea id="input-resume" rows="13" maxlength="50000" placeholder="粘贴真实简历内容。未提供的数据不会被自动补造…" required></textarea>
+              <div class="field-meta"><span id="resume-count">0 字</span><span>仅使用真实经历与结果</span></div>
+            </article>
+          </div>
+
+          <aside class="surface setup-card">
+            <span class="field-step">03</span>
+            <h2>面试设置</h2>
+            <p class="section-copy">先选择最接近真实面试的组合，后续可从报告中专项重答。</p>
+
+            <div class="form-group">
+              <label for="select-persona">面试官身份</label>
+              <select id="select-persona">
+                <option value="技术负责人">技术负责人</option>
+                <option value="HR">HR</option>
+                <option value="上级">直属上级</option>
+                <option value="CEO">CEO</option>
+                <option value="CTO">CTO</option>
+                <option value="业务负责人">业务负责人</option>
+                <option value="业务总监">业务总监</option>
+                <option value="压力面">压力面考官</option>
+                <option value="英文面">英文面试官</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="select-difficulty">面试强度</label>
+              <select id="select-difficulty">
+                <option value="初级">初级 · 结构与动机</option>
+                <option value="标准" selected>标准 · STAR 与专业基础</option>
+                <option value="进阶">进阶 · 深挖与案例</option>
+                <option value="压力">压力 · 连续追问</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="select-voice">面试官音色</label>
+              <div class="inline-control">
+                <select id="select-voice">
+                  <option value="白桦">白桦 · 沉稳男声</option>
+                  <option value="苏打">苏打 · 清晰男声</option>
+                  <option value="冰糖">冰糖 · 明快女声</option>
+                  <option value="茉莉">茉莉 · 温和女声</option>
+                </select>
+                <button id="btn-preview-voice" class="btn secondary compact" type="button" disabled>试听</button>
+              </div>
+            </div>
+
+            <label class="check-row" for="auto-speak">
+              <input id="auto-speak" type="checkbox" checked disabled>
+              <span><strong>自动播放问题</strong><small>生成问题后立即朗读，可随时停止。</small></span>
+            </label>
+
+            <div class="privacy-callout">
+              <strong>数据边界</strong>
+              <p>简历与回答保存在本机，同时会发送至你配置的模型 API 完成分析。</p>
+            </div>
+
+            <button id="btn-start" class="btn primary wide" type="submit" disabled>
+              <span id="start-label">分析材料并开始</span>
+              <span aria-hidden="true">→</span>
+            </button>
+            <div id="config-status" class="inline-status" role="status" aria-live="polite"></div>
+          </aside>
+        </form>
+        </details>
+      </section>
+
+      <section id="view-interview" class="view" aria-labelledby="interview-title">
+        <header class="interview-toolbar">
+          <div>
+            <p class="eyebrow">LIVE SIMULATION</p>
+            <h1 id="interview-title">模拟现场</h1>
+          </div>
+          <div class="session-facts" aria-label="面试状态">
+            <span id="interview-persona">技术负责人</span>
+            <span id="interview-difficulty">标准</span>
+            <span id="interview-round">第 0 题</span>
+            <time id="timer-display" datetime="PT0S">00:00</time>
+          </div>
+          <button id="btn-end" class="btn danger" type="button" disabled>结束面试</button>
+        </header>
+
+        <dialog id="end-interview-dialog" class="workbench-dialog end-dialog" aria-labelledby="end-interview-title" aria-describedby="end-interview-description">
+          <header class="dialog-header"><h2 id="end-interview-title">结束本次面试？</h2></header>
+          <div class="dialog-body">
+            <p id="end-interview-description">已提交的回答都会保存在本机。当前尚未回答的问题会标记为未回答，未出题的部分不计入作答记录。</p>
+            <div class="end-options">
+              <button id="btn-end-only" class="btn secondary" type="button"><strong>仅结束并保存记录</strong><span>不生成报告，不调用模型。以后可从训练记录中补生成。</span></button>
+              <button id="btn-end-report" class="btn primary" type="button"><strong>结束并生成报告</strong><span>使用分析模型生成评分、逐题反馈与训练建议。</span></button>
+            </div>
+            <p id="end-interview-error" class="inline-status error" role="status"></p>
+          </div>
+          <footer class="dialog-footer"><button id="btn-cancel-end" class="btn secondary" type="button" autofocus>继续面试</button></footer>
+        </dialog>
+
+        <div class="interview-layout">
+          <article class="surface conversation-panel">
+            <div id="chat-area" class="chat-area" role="log" aria-live="polite" aria-label="面试对话">
+              <div class="empty-state"><strong>面试尚未开始</strong><span>完成配置后，第一道问题会出现在这里。</span></div>
+            </div>
+
+            <div id="subtitle-area" class="subtitle-panel hidden" aria-live="polite">
+              <span>实时转写</span>
+              <p id="subtitle-text">等待录音…</p>
+            </div>
+
+            <div class="composer">
+              <div class="composer-tools">
+                <div class="segmented" aria-label="回答方式">
+                  <button id="btn-mode-text" class="segment active" type="button" aria-pressed="true">文字回答</button>
+                  <button id="btn-mode-voice" class="segment" type="button" aria-pressed="false">语音回答</button>
+                </div>
+                <div class="audio-actions">
+                  <button id="btn-replay" class="text-btn" type="button" disabled>重听问题</button>
+                  <button id="btn-stop-audio" class="text-btn" type="button">停止朗读</button>
+                </div>
+              </div>
+
+              <div id="text-input-group" class="answer-row">
+                <label class="sr-only" for="input-answer">你的回答</label>
+                <textarea id="input-answer" rows="4" maxlength="10000" placeholder="组织好思路后回答。Enter 发送，Shift + Enter 换行。"></textarea>
+                <button id="btn-send" class="btn primary send-btn" type="button" disabled>发送回答</button>
+              </div>
+
+              <div id="voice-input-group" class="voice-composer hidden">
+                <button id="btn-record" class="record-control" type="button" aria-pressed="false" disabled>
+                  <span class="record-icon" aria-hidden="true"></span>
+                  <span id="record-label">开始录音</span>
+                </button>
+                <div><strong id="record-status">点击开始，录音由你手动结束</strong><small>短片段持续转写；停顿不会停止，也不会自动发送。</small></div>
+              </div>
+              <div id="voice-draft-group" class="hidden">
+                <label class="field-label" for="voice-transcript">转写草稿 · 结束录音后可修改</label>
+                <textarea id="voice-transcript" rows="4" maxlength="10000" placeholder="说话时文字会持续出现。结束录音后，检查文字再发送。"></textarea>
+                <div class="voice-confirm-actions"><button id="btn-retry-asr" class="btn secondary hidden" type="button">重试识别</button><button id="btn-send-voice" class="btn primary" type="button" disabled>确认发送回答</button></div>
+              </div>
+              <div class="skip-row">
+                <label class="sr-only" for="skip-reason">跳过原因（选填）</label><select id="skip-reason"><option value="">跳过原因（选填）</option><option value="暂时没有思路">暂时没有思路</option><option value="缺少相关经历">缺少相关经历</option><option value="想稍后专项练习">想稍后专项练习</option><option value="本次不想回答">本次不想回答</option></select>
+                <button id="btn-skip" class="btn secondary" type="button" disabled>跳过本题，进入下一题</button><small>本题记为未回答，计入报告</small>
+              </div>
+            </div>
+          </article>
+
+          <aside class="interview-rail">
+            <section class="surface rail-card focus-card">
+              <p class="rail-label">当前训练重点</p>
+              <h2 id="current-focus">建立清晰、可验证的回答</h2>
+              <p id="focus-detail">先交代背景，再说明你的具体行动与结果。</p>
+            </section>
+            <section class="surface rail-card">
+              <div class="rail-heading"><h2>面试蓝图</h2><span id="blueprint-progress">0 / 0</span></div>
+              <ol id="blueprint-list" class="blueprint-list"></ol>
+            </section>
+            <section class="surface rail-card compact-card">
+              <p class="rail-label">回答建议</p>
+              <ul class="micro-tips">
+                <li>先给结论，再补充背景</li>
+                <li>说明你本人做了什么</li>
+                <li>没有真实数字就不要猜</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section id="view-report" class="view" aria-labelledby="report-title">
+        <header class="page-header report-header">
+          <div>
+            <p class="eyebrow">EVIDENCE REPORT</p>
+            <h1 id="report-title">证据报告</h1>
+            <p class="page-lead">分数用于比较训练变化；每一个判断都应能回到你的原回答。</p>
+          </div>
+          <div class="report-actions">
+            <button id="btn-export-md" class="btn secondary" type="button">导出 Markdown</button>
+            <button id="btn-export-json" class="btn secondary" type="button">导出 JSON</button>
+            <button id="btn-print" class="btn secondary" type="button">打印 / PDF</button>
+          </div>
+        </header>
+        <div id="report-content" aria-live="polite">
+          <div class="surface empty-state tall"><strong>还没有报告</strong><span>完成一次模拟面试后，这里会显示逐题证据与专项重答入口。</span></div>
+        </div>
+      </section>
+
+      <section id="view-history" class="view" aria-labelledby="history-title">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">PRACTICE LOG</p>
+            <h1 id="history-title">训练记录</h1>
+            <p class="page-lead">回看每次面试的证据报告，观察重复练习后的变化。</p>
+          </div>
+          <button id="btn-refresh-history" class="btn secondary" type="button">刷新记录</button>
+        </header>
+        <div id="history-list" class="history-list" aria-live="polite">
+          <div class="surface empty-state tall"><strong>正在加载记录</strong></div>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view" aria-labelledby="settings-title">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">LOCAL SETUP</p>
+            <h1 id="settings-title">配置你的面试工作台</h1>
+            <p class="page-lead">这些信息仅保存在当前电脑；API Key 保存后不会在页面中再次显示。</p>
+          </div>
+          <span id="settings-state" class="stage-badge">正在读取</span>
+        </header>
+
+        <div id="first-run-banner" class="onboarding-banner hidden" role="status">
+          <span class="onboarding-number">01</span>
+          <div><strong>首次启动，只需完成一次配置</strong><p>填写目标岗位与模型连接，保存后即可导入 JD 和简历。</p></div>
+        </div>
+
+        <form id="settings-form" class="settings-layout">
+          <div class="settings-main">
+            <section class="surface settings-card">
+              <div class="settings-heading"><span class="field-step">01</span><div><h2>个人与目标</h2><p>用于预填下一次面试，不会自动补造简历经历。</p></div></div>
+              <div class="form-grid two-columns">
+                <div class="form-group"><label for="setting-display-name">怎么称呼你</label><input id="setting-display-name" class="text-input" type="text" maxlength="80" placeholder="选填"></div>
+                <div class="form-group"><label for="setting-target-role">目标岗位</label><input id="setting-target-role" class="text-input" type="text" maxlength="160" placeholder="例如：AI 产品经理" required></div>
+              </div>
+              <div class="form-group"><label for="setting-coaching-goal">本阶段训练目标</label><textarea id="setting-coaching-goal" rows="3" maxlength="500" placeholder="例如：练习结构化表达，重点提升案例深挖。"></textarea></div>
+            </section>
+
+            <section class="surface settings-card">
+              <div class="settings-heading"><span class="field-step">02</span><div><h2>AI 连接</h2><p>保存后新请求立即生效。四类模型可使用同一服务，也可分别配置地址与 Key。</p></div></div>
+              <div class="form-group"><label for="setting-base-url">API Base URL</label><input id="setting-base-url" class="text-input mono-input" type="url" maxlength="500" required></div>
+              <div class="form-group">
+                <label for="setting-api-key">API Key <span id="settings-key-state" class="key-state">未配置</span></label>
+                <input id="setting-api-key" class="text-input mono-input" type="password" maxlength="4096" autocomplete="new-password" placeholder="粘贴后保存；留空则保留现有 Key">
+                <small class="field-help">密钥仅写入本机配置文件，接口不会将它读回前端。</small>
+              </div>
+              <div class="form-grid two-columns model-grid">
+                <div class="form-group"><label for="setting-llm-model">对话模型</label><input id="setting-llm-model" class="text-input mono-input" type="text" required></div>
+                <div class="form-group"><label for="setting-llm-model-pro">分析模型</label><input id="setting-llm-model-pro" class="text-input mono-input" type="text" required></div>
+                <div class="form-group"><label for="setting-asr-model">语音识别模型</label><input id="setting-asr-model" class="text-input mono-input" type="text" required></div>
+                <div class="form-group"><label for="setting-tts-model">语音合成模型</label><input id="setting-tts-model" class="text-input mono-input" type="text" required></div>
+              </div>
+              <details class="connection-options"><summary>分别配置对话、分析和语音服务</summary><p class="field-help">模型名称填写在上方。下方可更改每类模型的服务商。语音支持 MiMo 和 OpenAI 标准音频接口；其他专有协议需要适配。</p><div id="connection-list"></div></details>
+            </section>
+          </div>
+
+          <aside class="surface settings-card defaults-card">
+            <div class="settings-heading"><span class="field-step">03</span><div><h2>默认面试偏好</h2><p>新的面试会自动使用以下选项。</p></div></div>
+            <div class="form-group"><label for="setting-persona">面试官身份</label><select id="setting-persona"><option value="技术负责人">技术负责人</option><option value="HR">HR</option><option value="业务总监">业务总监</option><option value="压力面">压力面考官</option><option value="英文面">英文面试官</option></select></div>
+            <div class="form-group"><label for="setting-difficulty">面试强度</label><select id="setting-difficulty"><option value="初级">初级</option><option value="标准">标准</option><option value="进阶">进阶</option><option value="压力">压力</option></select></div>
+            <div class="form-group"><label for="setting-voice">面试官音色</label><select id="setting-voice"><option value="白桦">白桦</option><option value="苏打">苏打</option><option value="冰糖">冰糖</option><option value="茉莉">茉莉</option></select></div>
+            <div class="local-data-card"><strong>本机数据边界</strong><ul><li>上传原文件不留存</li><li>文字提取在本机完成</li><li>仅面试分析调用远程 API</li></ul></div>
+            <button id="btn-save-settings" class="btn primary wide" type="submit">保存并进入工作台</button>
+            <div id="settings-status" class="inline-status" role="status" aria-live="polite"></div>
+          </aside>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/audio.js"></script>
+  <script src="/assets/voice.js"></script>
+  <script src="/assets/workspace.js"></script>
+  <script src="/assets/jobs.js"></script>
+  <script src="/assets/reports.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>
