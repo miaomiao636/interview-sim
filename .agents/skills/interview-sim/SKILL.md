@@ -9,9 +9,9 @@ description: 启动、配置和使用本地 AI 求职面试模拟工作台。当
 
 ## 启动
 
-1. 解析本 Skill 目录的真实路径，上三级为完整仓库根目录。确认包含 backend/、frontend/ 和 pyproject.toml；只复制 Skill 文件夹不足以启动。
-2. 优先使用项目 .venv/bin/python。环境未建立时，按完整仓库 docs/QUICKSTART.md 在用户授权的目录安装，不修改系统 Python。
-3. 使用该解释器运行 <skill-directory>/scripts/launch.py。启动器输出 INTERVIEW_SIM_URL=http://127.0.0.1:<port> 并自动打开浏览器。
+1. 解析本 Skill 目录的真实路径。仓库内 Skill 的上三级为完整仓库根目录；安装器生成的复制版使用同目录 interview-sim-location.json 定位。确认包含 backend/、frontend/ 和 pyproject.toml；只手动复制 Skill 文件夹不足以启动。位置失效时请用户确认完整项目位置并重新安装，不广泛搜索私人目录。
+2. 需要 Python 3.11+，推荐 3.12。Windows 使用项目 .venv/Scripts/python.exe，macOS/Linux 使用 .venv/bin/python。环境未建立时，按完整仓库 docs/QUICKSTART.md 在用户授权的目录安装锁定依赖，不修改系统 Python。
+3. 使用该解释器运行 <skill-directory>/scripts/launch.py。路径含空格时加引号。启动器也会尝试切换至项目 .venv，输出 INTERVIEW_SIM_URL=http://127.0.0.1:<port> 并自动打开浏览器。
 4. 保持服务进程运行。不要让用户直接打开 HTML 文件。
 
 也可在安装命令行入口后直接运行 `interview-sim web`。如果首选端口被占用，启动器会自动选择后续可用端口；始终以命令输出的 URL 为准。
@@ -34,4 +34,4 @@ API Key 仅写入本机 `~/.interview-sim/config.json`，页面和 API 都不会
 - 用户要停止时，向运行服务的终端发送 Ctrl-C。
 - 网页结束面试可仅保存或生成报告。录音 / 草稿不自动提交，刷新前提醒用户处理。
 - 下一题连接失败暂时没有独立重试入口，不重复发送已保存回答；可查看记录并选择结束。本 Skill 不授权代答或上传个人资料。
-- 配置与排错分别参阅完整仓库 docs/CONFIGURATION.md、docs/FAQ.md。主要验证 macOS 桌面，不承诺其他宿主兼容。
+- 配置与排错分别参阅完整仓库 docs/CONFIGURATION.md、docs/FAQ.md。跨平台安装与 Agent 能力边界见 docs/COMPATIBILITY.md；不假定每个宿主都会自动发现 Skill。无需 Codex 专有工具，能读取本地文件和执行命令的 Agent 可按上述流程使用。

@@ -141,13 +141,15 @@ def _extract_image(content: bytes, suffix: str, content_type: str = "") -> str:
     except Exception as exc:
         raise DocumentParseError("INVALID_IMAGE", "文件扩展名是图片，但内容无法读取。") from exc
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as temp:
-        temp.write(content)
-        temp.flush()
+    # Close before an external process opens it: Windows locks open temp files.
+    # The directory context removes the image on both success and OCR failure.
+    with tempfile.TemporaryDirectory(prefix="interview-ocr-") as directory:
+        image_path = Path(directory) / ("input" + suffix)
+        image_path.write_bytes(content)
         if platform.system() == "Darwin" and Path("/usr/bin/swift").exists():
-            return _ocr_with_macos_vision(temp.name)
+            return _ocr_with_macos_vision(str(image_path))
         if shutil.which("tesseract"):
-            return _ocr_with_tesseract(temp.name)
+            return _ocr_with_tesseract(str(image_path))
     raise DocumentParseError(
         "OCR_UNAVAILABLE",
         "当前系统没有可用的本地 OCR；macOS 可使用 Vision，其他系统请安装 Tesseract。",
@@ -163,6 +165,7 @@ def _ocr_with_macos_vision(path: str) -> str:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=60,
         )
         return result.stdout
@@ -177,6 +180,7 @@ def _ocr_with_tesseract(path: str) -> str:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=60,
         )
         return result.stdout

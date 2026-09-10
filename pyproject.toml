@@ -1,23 +1,26 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "interview-sim"
-version = "1.4.0"
+version = "1.5.0"
 description = "Local, evidence-grounded AI interview practice workspace"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.104.0",
-  "uvicorn>=0.24.0",
-  "openai>=1.6.0",
-  "python-dotenv>=1.0.0",
-  "python-multipart>=0.0.6",
-  "pydantic>=2.5.0",
-  "pypdf>=5.0.0",
-  "Pillow>=10.0.0",
+  "fastapi==0.141.1",
+  "uvicorn==0.52.4",
+  "openai==2.48.0",
+  "python-dotenv==1.2.3",
+  "python-multipart==0.0.32",
+  "pydantic==2.13.5",
+  "pypdf==6.18.0",
+  "Pillow==12.3.0",
 ]
+
+[project.optional-dependencies]
+dev = ["httpx==0.28.1", "playwright==1.62.0", "pip-audit==2.10.1", "setuptools==84.0.0", "wheel==0.48.0"]
 
 [project.scripts]
 interview-sim = "backend.cli:main"

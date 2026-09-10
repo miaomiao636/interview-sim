@@ -59,4 +59,4 @@ asyncio.run(presets.create_preset(presets.PresetInput(name='QA 测试岗位',tar
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host='127.0.0.1', port=8830)
+    uvicorn.run(app, host='127.0.0.1', port=int(os.environ.get('INTERVIEW_SIM_TEST_PORT', '8830')))

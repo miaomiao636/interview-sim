@@ -4,10 +4,11 @@
 
 ## 安装与测试
 
-按 [快速开始](docs/QUICKSTART.md)安装。测试额外需要 httpx；音频测试需要 Node.js 20+。
+按 [快速开始](docs/QUICKSTART.md)创建 Python 3.11+ 环境。音频测试需要 Node.js 20+；开发清单已包括 httpx、Playwright、构建和漏洞检查工具。
 
 ```bash
-python -m pip install -e . httpx
+python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
+python -m pip install --no-deps --no-build-isolation -e .
 python -m unittest discover -s tests -v
 node --check frontend/app.js
 node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs
@@ -15,17 +16,28 @@ node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs
 
 测试使用虚构数据与临时文件，不需要真实 Key。可用 INTERVIEW_SIM_HOME 指向专用临时目录，进一步隔离个人数据。
 
-macOS 浏览器验收额外需要 Playwright 和 Google Chrome：
+跨平台浏览器验收（自动创建隔离服务并在结束后停止，不使用真实模型）：
 
 ```bash
-python -m pip install playwright
-# 终端一：虚构数据服务，端口 8830
-python -m tests.ui_fixture_server
-# 终端二
-python tests/browser_flow.py
+python -m playwright install chromium
+python -m tests.run_browser
 ```
 
-浏览器脚本使用 macOS Chrome 路径，不能据此宣称其他系统浏览器验收通过。
+默认使用 Playwright Chromium；可用 BROWSER_EXECUTABLE 指定自己的浏览器完整路径。CI 在 Windows/macOS/Linux 各跑 Python 3.11/3.12 后端与构建，3.12 额外跑浏览器流程。真实麦克风与提供商使用 [独立验收清单](docs/COMPATIBILITY.md#windows-独立验收清单)。
+
+## 依赖更新
+
+pyproject.toml 管理直接依赖；requirements.txt 为运行依赖的跨平台固定版本与哈希，requirements-dev.txt 在同一源上加入开发工具。修改后使用 uv 重新生成，并审查差异：
+
+```bash
+uv pip compile pyproject.toml --universal --python-version 3.11 --generate-hashes --no-header -o requirements.txt
+uv pip compile pyproject.toml --extra dev --universal --python-version 3.11 --generate-hashes --no-header -o requirements-dev.txt
+python -m pip_audit -r requirements.txt --disable-pip --no-deps
+python -m pip_audit -r requirements-dev.txt --disable-pip --no-deps
+python -m pip check
+```
+
+普通安装只使用二进制依赖，不运行第三方源码构建脚本；应用自身的构建工具也固定版本。不要使用强制更新或忽略漏洞选项绕过检查。锁文件与版本更新必须经过三系统测试后发布。
 
 ## 代码要求
 

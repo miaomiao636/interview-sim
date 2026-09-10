@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from tests.permission_checks import assert_storage_permissions
 from pathlib import Path
 from unittest.mock import patch
 from fastapi.testclient import TestClient
@@ -62,7 +63,7 @@ class WorkspaceFeatureTests(unittest.TestCase):
         items = self.client.get('/api/presets').json()
         self.assertEqual(len(items), 2)
         self.assertEqual(next(x for x in items if x['id']==b['id'])['jd'], 'JD B')
-        self.assertEqual((self.root/'presets.json').stat().st_mode & 0o777, 0o600)
+        assert_storage_permissions(self, self.root/'presets.json', 0o600)
 
     def test_connections_preserve_legacy_settings_and_hide_every_key(self):
         payload = {'profile': {'target_role':'后端'}, 'ai': {**config.DEFAULTS['ai'], 'api_key':'test-placeholder'}, 'defaults':config.DEFAULTS['defaults'], 'connections': {'analysis': {'inherit':False,'base_url':'https://analysis.example/v1','api_key':'analysis-placeholder','protocol':'openai'}}}

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from tests.permission_checks import assert_storage_permissions
 import os
 from pathlib import Path
 
@@ -70,7 +71,7 @@ class SessionStoreTests(unittest.TestCase):
         session = store.create_session("jd", "resume", "HR", "标准")
         path = config.SESSION_DIR / f"{session['id']}.json"
 
-        self.assertEqual(oct(os.stat(path).st_mode & 0o777), "0o600")
+        assert_storage_permissions(self, path, 0o600)
 
     def test_session_list_hides_abandoned_records_without_a_blueprint(self):
         abandoned = store.create_session("JD", "简历", "HR", "标准")

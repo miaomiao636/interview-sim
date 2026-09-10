@@ -1,6 +1,7 @@
 """Desktop browser acceptance flow against ui_fixture_server (synthetic data only)."""
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 from playwright.async_api import async_playwright, expect
@@ -9,14 +10,18 @@ from playwright.async_api import async_playwright, expect
 async def main():
     output = Path(tempfile.mkdtemp(prefix='interview-ui-check-'))
     async with async_playwright() as p:
-        browser = await p.chromium.launch(executable_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless=True)
+        options = {'headless': True}
+        if os.environ.get('BROWSER_EXECUTABLE'):
+            options['executable_path'] = os.environ['BROWSER_EXECUTABLE']
+        browser = await p.chromium.launch(**options)
         page = await browser.new_page(viewport={'width':1440,'height':1080})
         errors = []
         report_requests = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.on('request', lambda request: report_requests.append(request.url) if request.method == 'POST' and '/api/review' in request.url else None)
         page.on('dialog', lambda dialog: dialog.accept())
-        await page.goto('http://127.0.0.1:8830')
+        base_url = 'http://127.0.0.1:' + os.environ.get('INTERVIEW_SIM_TEST_PORT', '8830')
+        await page.goto(base_url)
         await expect(page.locator('#service-status-title')).to_have_text('模型配置已加载')
         await page.locator('#quick-prep > summary').click()
         await page.locator('#auto-speak').uncheck()
@@ -66,9 +71,9 @@ async def main():
         await expect(page.locator('#view-history')).to_be_visible()
         await expect(page.locator('.history-card').first).to_contain_text('已结束 · 未生成报告')
         assert not report_requests, report_requests
-        sessions = await (await page.request.get('http://127.0.0.1:8830/api/sessions')).json()
+        sessions = await (await page.request.get(base_url+'/api/sessions')).json()
         saved_id = sessions[0]['id']
-        saved = await (await page.request.get('http://127.0.0.1:8830/api/sessions/'+saved_id)).json()
+        saved = await (await page.request.get(base_url+'/api/sessions/'+saved_id)).json()
         assert saved['status'] == 'ended' and saved['review'] is None
         assert 'report_job' not in saved and len(saved['turns']) == 3
         await page.reload()
@@ -86,14 +91,14 @@ async def main():
         await expect(page.locator('#report-content')).to_contain_text('逐题证据', timeout=30000)
         await expect(page.locator('.answer-quote').filter(has_text='未回答')).to_have_count(2)
         await expect(page.locator('#btn-export-json')).to_be_enabled()
-        sessions = await (await page.request.get('http://127.0.0.1:8830/api/sessions')).json()
-        session = await (await page.request.get('http://127.0.0.1:8830/api/sessions/'+sessions[0]['id'])).json()
+        sessions = await (await page.request.get(base_url+'/api/sessions')).json()
+        session = await (await page.request.get(base_url+'/api/sessions/'+sessions[0]['id'])).json()
         assert session['config']['company'] == '示例内容科技公司'
         assert session['config']['interviewer_gender'] == '男性'
         assert session['config']['voice'] == '白桦'
         assert session['report_job']['status'] == 'completed'
         assert len(session['review']['question_feedback']) == 3
-        await page.goto('http://127.0.0.1:8830/?session='+sessions[0]['id'])
+        await page.goto(base_url+'/?session='+sessions[0]['id'])
         await expect(page.locator('#report-content')).to_contain_text('逐题证据')
         # A new interview resets the ended state, and the original report path remains usable.
         await page.locator('[data-view=config]').click()

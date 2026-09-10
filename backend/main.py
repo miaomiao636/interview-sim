@@ -9,7 +9,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import config
 from .routers import chat, documents, plan, presets, review, settings
 
-app = FastAPI(title="interview-sim", version="1.4.0")
+app = FastAPI(title="interview-sim", version="1.5.0")
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["127.0.0.1", "localhost", "testserver"],

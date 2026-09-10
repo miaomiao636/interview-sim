@@ -12,7 +12,9 @@
 
 需要完整仓库并执行安装与 python scripts/install_skill.py；必要时重开 Agent 会话。
 
-依赖装在 .venv 时，使用 .venv/bin/python .agents/skills/interview-sim/scripts/launch.py，或先激活环境再运行 interview-sim web。
+依赖装在 .venv 时，macOS/Linux 使用 .venv/bin/python，Windows 使用 .venv/Scripts/python.exe 运行 .agents/skills/interview-sim/scripts/launch.py。最低 Python 3.11；旧环境报版本错误时按快速开始重建，不要修改系统 Python。
+
+Windows 安装器默认复制，不需要符号链接权限。若目标 Agent 不识别默认目录，使用 --mode copy --dest 指向其文档确认的目录，或让它直接读取仓库中的 Skill。复制版更新前先改名备份旧 Skill；不要把本机位置文件上传。
 
 ## 端口占用
 
@@ -47,7 +49,7 @@ TTS 持续变速、音调异常时检查采样率与音色 ID。首次音频有�
 
 仅支持 DOCX，不支持旧 DOC；PDF 需有文本且未加密，扫描件可转图片。上限 12 MB，PDF 最多 60 页。
 
-macOS OCR 需要 Swift / Vision；其他系统需要 Tesseract 及 chi_sim、eng 语言包，且尚未完整验收。
+macOS OCR 需要 Swift / Vision；Windows/Linux 需要 Tesseract 及 chi_sim、eng 语言包。先用 tesseract --list-langs 检查，安装后重开启动服务的终端；见 [平台安装说明](COMPATIBILITY.md#图片识别)。
 
 ## 完全离线吗？能否公网使用？
 

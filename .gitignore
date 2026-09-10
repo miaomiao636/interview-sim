@@ -32,3 +32,6 @@ PROJECT.md
 dist/
 build/
 .release/
+.test-data/
+# Machine-local location written only into installed Skill copies
+interview-sim-location.json

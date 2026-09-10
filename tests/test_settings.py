@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from tests.permission_checks import assert_storage_permissions
 from pathlib import Path
 from unittest.mock import patch
 
@@ -34,7 +35,7 @@ class LocalSettingsTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_data_directory_is_private_before_first_save(self):
-        self.assertEqual(oct(os.stat(config.DATA_DIR).st_mode & 0o777), "0o700")
+        assert_storage_permissions(self, config.DATA_DIR, 0o700)
 
     def test_secret_is_preserved_but_never_returned(self):
         with patch.object(config, "LOCAL_SETTINGS_PATH", self.settings_path):
@@ -71,7 +72,7 @@ class LocalSettingsTests(unittest.TestCase):
         self.assertNotIn("api_key", first["ai"])
         self.assertNotIn("top-secret-key", json.dumps(first, ensure_ascii=False))
         self.assertEqual(stored["ai"]["api_key"], "top-secret-key")
-        self.assertEqual(oct(os.stat(self.settings_path).st_mode & 0o777), "0o600")
+        assert_storage_permissions(self, self.settings_path, 0o600)
 
     def test_first_run_requires_key_and_target_role(self):
         with patch.object(config, "LOCAL_SETTINGS_PATH", self.settings_path), patch.object(

@@ -6,7 +6,7 @@
 
 [快速开始](docs/QUICKSTART.md) · [模型配置](docs/CONFIGURATION.md) · [操作指南](docs/USER_GUIDE.md) · [常见问题](docs/FAQ.md) · [提交问题](https://github.com/miaomiao636/interview-sim/issues)
 
-> **公开测试版 v1.4.0-beta.2**：包含完整应用与 Skill，不是独立桌面安装包或托管网站。主要在 macOS 桌面验证；需自备模型 API，费用由提供商收取。已知限制见下文，不承诺招聘结果。
+> **公开测试版 v1.5.0-beta.1**：包含完整应用与通用 Skill，不是独立桌面安装包或托管网站。提供 Windows/macOS/Linux 安装流程及自动测试矩阵；各 Agent 与真实音频设备仍需独立验收，见 [兼容性](docs/COMPATIBILITY.md)。需自备模型 API，不承诺招聘结果。
 
 ## 演示视频
 
@@ -38,18 +38,34 @@
 
 ## 快速开始
 
-推荐 macOS、Python 3.11 / 3.12 和桌面 Chrome / Edge。应用最低要求 Python 3.9；其他操作系统尚未全流程验收。正常使用不需要 Node.js，也无需构建前端。
+推荐 Python 3.12 和桌面 Chrome / Edge，最低 Python 3.11。旧 Python 3.9/3.10 环境需重建。正常使用不需要 Node.js，也无需构建前端。
+
+macOS / Linux：
 
 ```bash
 git clone https://github.com/miaomiao636/interview-sim.git
 cd interview-sim
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
+python -m pip install --no-deps -e .
 python scripts/install_skill.py
 interview-sim web
 ```
+
+Windows PowerShell（获取完整项目并进入目录后）：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --no-deps -e .
+.\.venv\Scripts\python.exe scripts/install_skill.py
+.\.venv\Scripts\interview-sim.exe web
+```
+
+无需管理员权限或更改 PowerShell 执行策略。Windows 默认复制注册 Skill；其他 Agent 的目录可用 `--dest` 指定，详见 [快速开始](docs/QUICKSTART.md)。
 
 访问终端打印的 `INTERVIEW_SIM_URL`，通常为 `http://127.0.0.1:8800`；端口占用时自动选择后续端口。保持服务进程运行，不要双击 HTML 文件。
 
