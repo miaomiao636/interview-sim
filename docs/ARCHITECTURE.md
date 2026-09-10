@@ -1,8 +1,31 @@
 # 项目结构与数据流
 
-结构图按本版本实际源码绘制。静态图可放大查看，Mermaid 源文件可编辑；未实现在线图表编辑器。
+结构图按本版本实际源码编写，由 Archify 生成交互页面。可点选节点查看关联、搜索、缩放、切换主题或导出图片。
 
-![项目结构](architecture/interview-sim.svg)
+[![项目结构](architecture/interview-sim-preview.png)](https://miaomiao636.github.io/interview-sim/architecture/interview-sim.html)
+
+[打开交互版](https://miaomiao636.github.io/interview-sim/architecture/interview-sim.html) · [编辑 JSON 源文件](architecture/interview-sim.architecture.json) · [下载 HTML](architecture/interview-sim.html) · [SVG 导出图](architecture/interview-sim.svg) · [详细 Mermaid 数据流](architecture/interview-sim.mmd)
+
+本图将文件提取、岗位预设和题纲归为“材料与面试准备”，将 ASR 与 TTS 两类独立连接归为一组。为便于阅读，省略模块重复的文件读写线；下方表格保留具体实现对应关系。Pages 展示的是图表文档，实际面试仍需在自己的电脑启动。
+
+## 查看与维护
+
+- 点击节点查看上游与下游，按 Esc 或关闭按钮退出聚焦。
+- 右下角搜索按钮查找节点，使用加减按钮缩放；PATH 查看有向路径。
+- 顶部 Light / Dark 切换主题，Classic 菜单选择视觉样式，Present 进入演示模式，Export 导出 PNG 或 SVG 等格式。
+- 修改 JSON 后使用 Archify 重新验证和生成，避免手动修改生成的 HTML。图中不包含个人配置或模型密钥。
+
+生成工具：Archify 2.15.0，来源 [yuppiez99999/archify-](https://github.com/yuppiez99999/archify-)，固定提交 `98648ce928d2bda5516ec85b699e0b1ae8530885`。Node.js 18 及以上即可运行生成器，无须安装生成器依赖。生成页面内置 SVG 和交互代码，字体可回退到系统字体；模板可能请求 Google Fonts。
+
+在包含 `bin/archify.mjs` 的 Archify Skill 目录执行，下面的路径替换为本项目内对应文件路径：
+
+```bash
+node bin/archify.mjs validate architecture <JSON路径> --quality showcase --json
+node bin/archify.mjs deliver architecture <JSON路径> <HTML路径> --quality showcase --json
+node bin/archify.mjs visual-check <HTML路径> --json
+```
+
+生成与视觉检查记录见 [校验说明](architecture/VALIDATION.md)，第三方查看器许可见 [ARCHIFY-LICENSE.txt](architecture/ARCHIFY-LICENSE.txt)。
 
 ## 启动与模块
 

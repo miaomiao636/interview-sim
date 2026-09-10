@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Interview Sim 项目结构图",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1395,
+      730
+    ],
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "交互入口"
+        },
+        "backend": {
+          "label": "本机处理"
+        },
+        "database": {
+          "label": "本地文件"
+        },
+        "external": {
+          "label": "远程模型"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "skill-entry",
+      "type": "frontend",
+      "label": "Agent / Skill 启动",
+      "sublabel": "CLI · 选端口 · 打开网页",
+      "pos": [
+        330,
+        65
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "browser-console",
+      "type": "frontend",
+      "label": "本地面试工作台",
+      "sublabel": "岗位 · 作答 · 报告 · 设置",
+      "pos": [
+        40,
+        315
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "local-server",
+      "type": "backend",
+      "label": "本地 Web 服务",
+      "sublabel": "FastAPI · 127.0.0.1",
+      "pos": [
+        330,
+        315
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "preparation",
+      "type": "backend",
+      "label": "材料与面试准备",
+      "sublabel": "文件提取 · 岗位预设 · 题纲",
+      "pos": [
+        620,
+        65
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "interview",
+      "type": "backend",
+      "label": "面试对话与语音",
+      "sublabel": "手动发送 · 追问 · 跳题",
+      "pos": [
+        620,
+        315
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "report",
+      "type": "backend",
+      "label": "分阶段证据报告",
+      "sublabel": "逐题分析 · 校验 · 失败续跑",
+      "pos": [
+        620,
+        565
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "local-files",
+      "type": "database",
+      "label": "本地 JSON 文件",
+      "sublabel": "配置 · 岗位 · 面试记录",
+      "pos": [
+        330,
+        565
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "model-adapter",
+      "type": "backend",
+      "label": "模型连接适配",
+      "sublabel": "独立地址 / Key / 模型",
+      "pos": [
+        910,
+        315
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "analysis-api",
+      "type": "external",
+      "label": "分析模型 API",
+      "sublabel": "岗位解析 · 题纲 · 报告",
+      "pos": [
+        1200,
+        65
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "dialog-api",
+      "type": "external",
+      "label": "对话模型 API",
+      "sublabel": "结合历史回答生成追问",
+      "pos": [
+        1200,
+        315
+      ],
+      "size": [
+        190,
+        90
+      ]
+    },
+    {
+      "id": "speech-api",
+      "type": "external",
+      "label": "ASR / TTS API",
+      "sublabel": "分段转写 · 合成面试官声音",
+      "pos": [
+        1200,
+        565
+      ],
+      "size": [
+        190,
+        90
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "skill-starts-server",
+      "from": "skill-entry",
+      "to": "local-server",
+      "label": "启动",
+      "labelAt": [
+        425,
+        235
+      ]
+    },
+    {
+      "id": "browser-http",
+      "from": "browser-console",
+      "to": "local-server",
+      "label": "同源 HTTP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "server-interview",
+      "from": "local-server",
+      "to": "interview",
+      "label": "作答",
+      "variant": "emphasis",
+      "labelAt": [
+        575,
+        384
+      ]
+    },
+    {
+      "id": "server-preparation",
+      "from": "local-server",
+      "to": "preparation",
+      "label": "准备"
+    },
+    {
+      "id": "prepare-first-question",
+      "from": "preparation",
+      "to": "interview",
+      "label": "题纲与首题",
+      "labelAt": [
+        715,
+        235
+      ]
+    },
+    {
+      "id": "interview-model",
+      "from": "interview",
+      "to": "model-adapter",
+      "label": "请求模型",
+      "variant": "emphasis",
+      "labelAt": [
+        860,
+        390
+      ]
+    },
+    {
+      "id": "prepare-model",
+      "from": "preparation",
+      "to": "model-adapter",
+      "label": "分析材料"
+    },
+    {
+      "id": "interview-report",
+      "from": "interview",
+      "to": "report",
+      "label": "选择报告",
+      "labelAt": [
+        715,
+        485
+      ]
+    },
+    {
+      "id": "report-model",
+      "from": "report",
+      "to": "model-adapter",
+      "label": "分批分析",
+      "toSide": "bottom"
+    },
+    {
+      "id": "server-files",
+      "from": "local-server",
+      "to": "local-files",
+      "label": "读写",
+      "labelAt": [
+        425,
+        485
+      ]
+    },
+    {
+      "id": "report-files",
+      "from": "report",
+      "to": "local-files",
+      "label": "保存报告"
+    },
+    {
+      "id": "adapter-analysis",
+      "from": "model-adapter",
+      "to": "analysis-api",
+      "label": "HTTPS",
+      "variant": "dashed"
+    },
+    {
+      "id": "adapter-dialog",
+      "from": "model-adapter",
+      "to": "dialog-api",
+      "label": "HTTPS",
+      "variant": "emphasis",
+      "labelAt": [
+        1150,
+        390
+      ]
+    },
+    {
+      "id": "adapter-speech",
+      "from": "model-adapter",
+      "to": "speech-api",
+      "label": "HTTPS",
+      "variant": "dashed",
+      "fromSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "从准备到练习",
+      "items": [
+        "导入 JD / 简历 → 选择岗位与面试官 → 模拟作答。",
+        "先保存回答，再结合已答内容生成下一题。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "结束方式由你选择",
+      "items": [
+        "仅结束：保存记录，不调用报告模型。",
+        "生成报告：分阶段分析；可导出并练习原题。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "本地与远程的边界",
+      "items": [
+        "JSON 保存在本机；图中省略模块重复读写线。",
+        "必要的文字和音频会发送至使用者配置的 API。"
+      ]
+    }
+  ]
+}

@@ -16,11 +16,11 @@
 
 ## 项目结构图
 
-[![Interview Sim 项目结构：Skill 与命令行启动本地服务，网页使用文档解析、题纲、对话和报告模块；本机保存配置与记录，模型请求发往各自的 API。](docs/architecture/interview-sim.svg)](docs/architecture/interview-sim.svg)
+[![Interview Sim 交互结构图：入口、本地服务、面试与报告、模型连接及数据存储](docs/architecture/interview-sim-preview.png)](https://miaomiao636.github.io/interview-sim/architecture/interview-sim.html)
 
-[模块与数据流说明](docs/ARCHITECTURE.md) · [可编辑 Mermaid 源文件](docs/architecture/interview-sim.mmd) · [SVG 原图](docs/architecture/interview-sim.svg)
+[**点击打开交互结构图 ↗**](https://miaomiao636.github.io/interview-sim/architecture/interview-sim.html) · [可编辑 Archify 源文件](docs/architecture/interview-sim.architecture.json) · [SVG 导出图](docs/architecture/interview-sim.svg)
 
-这是静态结构图，可打开原图放大查看，不依赖第三方图表服务。
+交互版支持缩放、节点搜索、关联高亮、深浅主题、演示模式与图片导出，由 [Archify](https://github.com/yuppiez99999/archify-) Skill 生成。README 显示预览图，点击图片或上方链接即可操作。也可下载 [HTML](docs/architecture/interview-sim.html) 后在本地浏览器打开。详见 [模块与数据流说明](docs/ARCHITECTURE.md)。
 
 ## 可以做什么
 
@@ -107,4 +107,4 @@ Skill 是完整应用的启动入口，不能只下载 `SKILL.md`。安装、ZIP
 
 采用 [MIT License](LICENSE)。
 
-发布页面的组织方式参考 [BossHunter](https://github.com/shengjidaguai-china/BossHunter)。架构图按本项目代码独立绘制，未复制其代码、图片或许可证；两个项目无隶属或背书关系。
+发布页面的组织方式参考 [BossHunter](https://github.com/shengjidaguai-china/BossHunter)。结构图内容依据本项目源码编写，使用 [Archify](https://github.com/yuppiez99999/archify-) 生成交互页面，并保留其 [MIT 版权与许可声明](docs/architecture/ARCHIFY-LICENSE.txt)。未复制 BossHunter 的代码或图片；各项目无隶属或背书关系。
