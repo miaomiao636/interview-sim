@@ -113,6 +113,7 @@ Skill 是完整应用的启动入口，不能只下载 `SKILL.md`。安装、ZIP
 | [快速开始](docs/QUICKSTART.md) | 获取完整项目、安装 Skill、启动和停止 |
 | [配置指南](docs/CONFIGURATION.md) | 四类模型、Key、协议与个人数据 |
 | [操作指南](docs/USER_GUIDE.md) | 岗位、面试、语音、跳题、报告与导出 |
+| [本地工作台联通](docs/INTEGRATIONS.md) | BossHunter 等工作台的岗位草稿入口、协议与手动导入降级 |
 | [常见问题](docs/FAQ.md) | 启动、权限、连接、文件解析与报告失败 |
 | [架构说明](docs/ARCHITECTURE.md) | 模块、接口和本地 / 远程数据流 |
 | [虚构示例](examples/) | 试运行 JD / 简历，不代表真实招聘或经历 |

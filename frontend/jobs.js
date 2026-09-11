@@ -87,6 +87,23 @@ function openJobEditor(item=null) {
   $('job-editor').showModal();
 }
 
+function openImportedJob(job) {
+  if (state.sessionId || state.isBusy || state.isRecording || state.voice?.processing
+      || $('job-editor').open || $('interview-setup').open
+      || $('input-jd').value.trim() || $('input-resume').value.trim()) return false;
+  openJobEditor();
+  $('job-editor-title').textContent = '导入岗位 · 未保存草稿';
+  $('job-source').value = job.jd;
+  $('job-company').value = job.company;
+  $('job-role').value = job.target_role;
+  $('job-city').value = job.city;
+  $('job-education').value = job.education || '不限';
+  $('job-duties').value = job.jd;
+  $('job-company-context').value = job.salary ? `薪资原文（来源岗位）：${job.salary}` : '';
+  $('job-parse-status').textContent = '来自本地工作台的 JD 原文；保存前可整理职责与要求、核对薪资。请自行填写或导入简历。尚未保存，也未调用 AI。';
+  return true;
+}
+
 async function parseJob() {
   const source = $('job-source').value.trim();
   if (source.length < 10) { $('job-parse-status').textContent = '请先粘贴 JD 或导入文件。'; return; }

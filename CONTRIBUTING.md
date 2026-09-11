@@ -11,7 +11,7 @@ python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.t
 python -m pip install --no-deps --no-build-isolation -e .
 python -m unittest discover -s tests -v
 node --check frontend/app.js
-node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs
+node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs tests/test_job_handoff.cjs
 ```
 
 测试使用虚构数据与临时文件，不需要真实 Key。可用 INTERVIEW_SIM_HOME 指向专用临时目录，进一步隔离个人数据。
