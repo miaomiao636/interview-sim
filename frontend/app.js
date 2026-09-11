@@ -40,7 +40,11 @@ document.addEventListener("DOMContentLoaded", () => {
   bindSettings();
   updateCharacterCount("input-jd", "jd-count");
   updateCharacterCount("input-resume", "resume-count");
-  Promise.allSettled([checkServiceHealth(), loadSettings()]).then(restorePendingReport);
+  const jobHandoff = InterviewJobHandoff.receive(window, openImportedJob, message => showToast(message, true));
+  Promise.allSettled([checkServiceHealth(), loadSettings()]).then(() => {
+    // An explicit job import takes priority; a previous report must not take over its editor.
+    if (!jobHandoff) restorePendingReport();
+  });
   loadPresets();
 });
 

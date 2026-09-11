@@ -5,6 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 from playwright.async_api import async_playwright, expect
+from browser_handoff import check_job_handoff
 
 
 async def main():
@@ -21,6 +22,7 @@ async def main():
         page.on('request', lambda request: report_requests.append(request.url) if request.method == 'POST' and '/api/review' in request.url else None)
         page.on('dialog', lambda dialog: dialog.accept())
         base_url = 'http://127.0.0.1:' + os.environ.get('INTERVIEW_SIM_TEST_PORT', '8830')
+        await check_job_handoff(browser, base_url, output)
         await page.goto(base_url)
         await expect(page.locator('#service-status-title')).to_have_text('模型配置已加载')
         await page.locator('#quick-prep > summary').click()
