@@ -27,7 +27,7 @@ class JobContextTests(unittest.IsolatedAsyncioTestCase):
                 chat_messages.extend(messages)
                 yield '你刚才提到的访谈，怎样帮助内容创作者？'
             with patch('backend.routers.chat.chat_stream', fake_chat):
-                response = await chat(ChatRequest(session_id=result.session_id,asr_text='我访谈过三位创作者。'))
+                response = await chat(ChatRequest(session_id=result.session_id,asr_text='我访谈过三位创作者。', question_id=result.active_question['question_id'], attempt=result.active_question['attempt'], operation_id='job-context-answer'))
                 text = ''.join([part async for part in response.body_iterator])
             self.assertIn('访谈', text)
             self.assertIn('示例公司', chat_messages[0]['content'])

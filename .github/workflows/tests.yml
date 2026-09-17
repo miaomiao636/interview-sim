@@ -36,11 +36,11 @@ jobs:
           python -m pip install --no-deps --no-build-isolation -e .
           python -m pip check
       - name: Backend tests
-        run: python -m unittest discover -s tests -v
-      - name: Frontend syntax and audio tests
+        run: python -m tests.run_tests
+      - name: Frontend syntax and runtime tests
         run: |
           for file in frontend/*.js; do node --check "$file"; done
-          node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs
+          node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs tests/test_report_runtime.cjs
       - name: Build distribution
         run: python -m pip wheel --no-deps --no-build-isolation . --wheel-dir dist
       - name: Browser acceptance with synthetic data

@@ -9,7 +9,7 @@
 | 能力 | 用途 | 协议要求 |
 |---|---|---|
 | 对话 | 下一题与追问 | /chat/completions，流式文本 |
-| 分析 | JD 提取、题纲与报告 | /chat/completions，支持 response_format 的 json_object |
+| 分析 | JD 提取、岗位准备、题纲、报告和面后素材摘录 | /chat/completions，支持 response_format 的 json_object |
 | ASR | 录音转写 | MiMo 音频消息，或标准 /audio/transcriptions |
 | TTS | 试听与朗读 | MiMo 语音，或标准 /audio/speech，PCM16 |
 
@@ -53,8 +53,11 @@ Base URL 填 API 根地址，例如 https://api.example.com/v1，不能填产品
 | ~/.interview-sim/config.json | 个人设置、连接与密钥 |
 | ~/.interview-sim/presets.json | 岗位 JD、简历和预设 |
 | ~/.interview-sim/sessions/*.json | 回答、报告与阶段进度 |
+| ~/.interview-sim/preparations/*.json | 岗位准备任务、简历版本、建议和素材来源 |
 
 设置接口只返回 has_api_key，不向前端回传 Key。文件权限不等于加密，仍需保护电脑与备份。
+
+专家角色通过项目自己的提示词、结构校验与本地任务编排实现，复用分析连接，不依赖 WorkBuddy 账号或其他 Agent 运行时。修改连接不会让旧任务自动重跑；已经运行的任务使用其启动时的连接快照，材料或配置变化后可能标为过期或需要重新开始。
 
 高级用户可用 INTERVIEW_SIM_HOME 改变数据根目录，SESSION_DIR 单独覆盖记录目录。网页保存配置优先于环境默认值。
 

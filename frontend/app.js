@@ -20,20 +20,78 @@ const state = {
   playbackSources: new Set(),
   voice: null,
   activeQuestionId: null,
+  activeAttempt: 1,
+  activeIsRetry: false,
+  sessionEpoch: 0,
+  reportEpoch: 0,
+  reportJobIdentity: null,
+  pendingOperation: null,
+  nextQuestionJob: null,
+  conversationController: null,
   presets: [],
   presetId: null,
   reportTimer: null,
   capabilities: {},
   reportPoll: null,
   reportSessionId: null,
+  reportLearning: null,
 };
 
 const $ = (id) => document.getElementById(id);
+
+function invalidateSessionContext(sessionId = state.sessionId) {
+  state.sessionEpoch++;
+  state.reportEpoch++;
+  state.sessionId = sessionId;
+  state.reportSessionId = null;
+  state.reportJobIdentity = null;
+  clearTimeout(state.reportLearning?.timer);
+  clearTimeout(state.reportPoll);
+  state.reportPoll = null;
+  state.conversationController?.abort();
+  state.conversationController = null;
+  state.pendingOperation = null;
+  state.nextQuestionJob = null;
+  state.activeQuestionId = null;
+  state.activeAttempt = 1;
+  state.activeIsRetry = false;
+  stopTimer();
+  stopSpeaking();
+  return sessionContext();
+}
+function sessionContext() { return {sessionId: state.sessionId, epoch: state.sessionEpoch, questionId: state.activeQuestionId, attempt: state.activeAttempt}; }
+function isSessionContext(context) { return context.sessionId === state.sessionId && context.epoch === state.sessionEpoch; }
+function applyActiveQuestion(active) {
+  state.activeQuestionId = active?.question_id || null;
+  state.activeAttempt = active?.attempt || 1;
+  state.activeIsRetry = Boolean(active?.is_retry);
+  state.lastQuestion = active?.question || '';
+}
+function operationFor(kind, payload) {
+  const fingerprint = JSON.stringify({kind, session: state.sessionId, question: state.activeQuestionId, attempt: state.activeAttempt, payload});
+  if (state.pendingOperation?.fingerprint !== fingerprint) state.pendingOperation = {fingerprint, id: crypto.randomUUID()};
+  return state.pendingOperation.id;
+}
+function clearAnswerDrafts() {
+  $('input-answer').value = '';
+  $('voice-transcript').value = '';
+  $('subtitle-text').textContent = '等待录音…';
+  state.voice = null;
+}
+function renderNextQuestionRecovery() {
+  const running = state.nextQuestionJob?.status === 'running';
+  const canRecover = !state.activeQuestionId && !state.sessionEnded && ['running','failed','interrupted'].includes(state.nextQuestionJob?.status);
+  $('next-question-recovery').classList.toggle('hidden', !canRecover);
+  $('next-question-status').textContent = !canRecover ? '' : running ? '回答已保存，后台仍在生成下一题。稍后刷新即可读取结果，不会再次调用模型。' : `回答已保存。${state.nextQuestionJob.error || '下一题暂未生成，可重新生成。'}`;
+  $('btn-recover-question').textContent = running ? '刷新当前问题' : '重新生成下一题';
+  $('btn-recover-question').disabled = state.isBusy || (!running && !state.serviceReady);
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   bindNavigation();
   bindConfig();
   bindJobs();
+  bindPreparation();
   bindInterview();
   bindReport();
   bindHistory();
@@ -111,6 +169,7 @@ function bindInterview() {
   $("btn-retry-asr").addEventListener("click", () => state.voice?.retry());
   $("voice-transcript").addEventListener("input", syncVoiceUI);
   $("btn-skip").addEventListener("click", skipQuestion);
+  $("btn-recover-question").addEventListener("click", recoverNextQuestion);
   $("btn-end").addEventListener("click", endInterview);
   $("btn-end-only").addEventListener("click", () => confirmEndInterview(false));
   $("btn-end-report").addEventListener("click", () => confirmEndInterview(true));
@@ -133,6 +192,8 @@ function bindReport() {
   $("report-content").addEventListener("click", (event) => {
     const button = event.target.closest("[data-retry-question]");
     if (button) retryQuestion(button.dataset.retryQuestion);
+    const action = event.target.closest('[data-report-action]');
+    if (action && !action.disabled) handleReportLearningAction(action.dataset.reportAction);
   });
 }
 
@@ -150,7 +211,8 @@ function bindSettings() {
 
 function switchView(name) {
   const targetButton = document.querySelector(`.nav-btn[data-view="${name}"]`);
-  if (!targetButton || targetButton.disabled) return;
+  if (!targetButton || targetButton.disabled) return false;
+  if (!beforePreparationNavigation(name)) return false;
 
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach((button) => button.classList.remove("active"));
@@ -159,7 +221,10 @@ function switchView(name) {
   state.view = name;
   if (name === "history") loadHistory();
   if (name === "settings" && !state.settings) loadSettings();
+  if (name === "preparation") onPreparationViewShown();
+  if (name === 'report' && $('report-learning')) refreshReportLearning();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  return true;
 }
 
 function enableView(name, enabled = true) {
@@ -182,6 +247,7 @@ async function startInterview(event, options = {}) {
     return;
   }
 
+  const context = invalidateSessionContext(null);
   setConfigBusy(true);
   state.isBusy = true;
   showInlineStatus("正在解析岗位要求，并建立专属面试蓝图…");
@@ -197,25 +263,26 @@ async function startInterview(event, options = {}) {
       voice: $('select-voice').value,
       persona: $("select-persona").value,
       difficulty: $("select-difficulty").value,
+      ...(options.preset_id && options.resume_version_id ? {preset_id: options.preset_id, resume_version_id: options.resume_version_id} : {}),
     });
-    if (!data.blueprint?.length) throw new Error("题纲为空，请补充岗位或简历信息后重试。 ");
+    if (!isSessionContext(context)) return false;
+    if (!data.active_question?.question_id || !data.active_question?.question) throw new Error("当前问题未生成，请补充材料后重试。");
 
     state.sessionId = data.session_id;
     state.sessionEnded = false;
     state.blueprint = data.blueprint;
-    state.round = 1;
-    state.activeQuestionId = 'q-1';
+    state.round = data.question_cursor || 1;
+    applyActiveQuestion(data.active_question);
     state.lastReport = null;
-    state.lastQuestion = data.blueprint[0].question || "请先做一个简短的自我介绍。";
 
     $("interview-persona").textContent = $("select-persona").value;
     $("interview-difficulty").textContent = $("select-difficulty").value;
     $("chat-area").replaceChildren();
-    addSystemMessage("题纲已建立。面试官会根据你的回答决定追问或进入下一维度。");
+    clearAnswerDrafts();
+    addSystemMessage("面试开始。回答后请明确发送；录音停顿不会自动提交。");
     addChatMessage("interviewer", state.lastQuestion);
-    renderBlueprint();
     updateInterviewMeta();
-    updateCurrentFocus(0);
+    renderNextQuestionRecovery();
     enableView("interview");
     enableView("report", false);
     startTimer(true);
@@ -224,12 +291,14 @@ async function startInterview(event, options = {}) {
     if ($("auto-speak").checked) speakText(state.lastQuestion);
     return true;
   } catch (error) {
-    showInlineStatus(error.message || "生成题纲失败，请稍后重试。", true);
+    if (state.sessionEpoch === context.epoch) showInlineStatus(error.message || "生成题纲失败，请稍后重试。", true);
     return false;
   } finally {
-    state.isBusy = false;
-    setConfigBusy(false);
-    setConversationBusy(false);
+    if (state.sessionEpoch === context.epoch) {
+      state.isBusy = false;
+      setConfigBusy(false);
+      setConversationBusy(false);
+    }
   }
 }
 
@@ -241,63 +310,114 @@ async function sendTextAnswer() {
 
 async function submitAnswer(answer) {
   if (!state.sessionId || !state.serviceReady || state.isBusy || state.isRecording || !state.activeQuestionId || !answer.trim()) return;
+  const context = {...sessionContext(), wasRetry: state.activeIsRetry};
+  const operationId = operationFor('answer', answer);
   state.isBusy = true;
   setConversationBusy(true);
   stopSpeaking();
-  const submittedQuestionId = state.activeQuestionId;
-  addChatMessage("candidate", answer);
-  const thinking = addSystemMessage("面试官正在判断是追问还是进入下一维度…");
-
+  const thinking = addSystemMessage('正在保存回答…');
   try {
-    const response = await fetch(`${API}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: state.sessionId, asr_text: answer }),
-    });
-    if (!response.ok) throw new Error(await responseError(response, "生成下一题失败"));
-
-    thinking.remove();
-    const message = addChatMessage("interviewer", "", true);
-    const body = message.querySelector(".message-body");
-    let reply = "";
-    await readTextStream(response, (chunk) => {
-      reply += chunk;
-      body.textContent = reply;
-      scrollChat();
-    });
-    message.classList.remove("streaming");
-    body.classList.remove("stream-caret");
-    state.lastQuestion = reply.trim();
-    state.round += 1;
-    const session = await getJSON(`/api/sessions/${encodeURIComponent(state.sessionId)}`);
-    state.activeQuestionId = session.active_question?.question_id || null;
-    $("input-answer").value = '';
-    $("voice-transcript").value = '';
-    $("subtitle-text").textContent = '等待录音…';
-    state.voice = null;
-    updateInterviewMeta();
-    renderBlueprint();
-    updateCurrentFocus(Math.min(state.round - 1, state.blueprint.length - 1));
-    if ($("auto-speak").checked) speakText(state.lastQuestion);
+    await streamQuestionRequest(context, '/api/chat', {session_id: context.sessionId, asr_text: answer, question_id: context.questionId, attempt: context.attempt, operation_id: operationId});
+    if (!isSessionContext(context)) return;
+    const session = await getJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}`);
+    if (!isSessionContext(context)) return;
+    clearAnswerDrafts();
+    state.pendingOperation = null;
+    renderLiveSession(session, context.wasRetry);
+    if (state.activeQuestionId && $('auto-speak').checked) speakText(state.lastQuestion);
   } catch (error) {
-    thinking.remove();
+    if (!isSessionContext(context)) return;
     addSystemMessage(`本轮未完成：${error.message}`);
     try {
-      const saved = await getJSON(`/api/sessions/${encodeURIComponent(state.sessionId)}`);
-      state.activeQuestionId = saved.active_question?.question_id || null;
-      if ((saved.turns || []).some(turn => turn.question_id === submittedQuestionId && turn.answer === answer)) {
-        $("input-answer").value = '';
-        $("voice-transcript").value = '';
-        state.voice = null;
+      const saved = await getJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}`);
+      if (!isSessionContext(context)) return;
+      const accepted = (saved.turns || []).some(turn => turn.question_id === context.questionId && (turn.attempt || 1) === context.attempt && turn.answer === answer);
+      if (accepted) {
+        clearAnswerDrafts();
+        state.pendingOperation = null;
       }
-      if (!state.activeQuestionId) showToast('回答已保存在训练记录，可结束面试生成报告。', true);
-      else showToast('请检查训练记录中的当前问题后继续；输入文字仍保留。', true);
-    } catch (_) { showToast('服务连接中断，文字仍保留，请恢复服务后从训练记录继续。', true); }
+      renderLiveSession(saved, context.wasRetry && accepted);
+      if (!accepted) showToast('本次内容尚未保存，草稿仍保留。请核对当前问题，重试同一内容不会重复保存。', true);
+    } catch (_) { if (isSessionContext(context)) showToast('服务连接中断，草稿仍保留；恢复连接后可重试。', true); }
   } finally {
-    state.isBusy = false;
-    setConversationBusy(false);
-    $("input-answer").focus();
+    thinking.remove();
+    if (isSessionContext(context)) {
+      state.isBusy = false;
+      state.conversationController = null;
+      setConversationBusy(false);
+      if (state.activeQuestionId) $('input-answer').focus();
+    }
   }
+}
+
+async function streamQuestionRequest(context, path, body) {
+  const controller = new AbortController();
+  state.conversationController = controller;
+  const response = await fetch(`${API}${path}`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: controller.signal});
+  if (!response.ok) throw new Error(await responseError(response, '生成下一题失败'));
+  if (!isSessionContext(context)) return;
+  let message = null;
+  await readTextStream(response, chunk => {
+    if (!isSessionContext(context)) return false;
+    if (!chunk) return;
+    if (!message) message = addChatMessage('interviewer', '', true);
+    message.querySelector('.message-body').textContent += chunk;
+    scrollChat();
+  });
+}
+
+async function recoverNextQuestion() {
+  if (!state.sessionId || state.activeQuestionId || state.isBusy || state.sessionEnded) return;
+  const readOnly = state.nextQuestionJob?.status === 'running';
+  if (!readOnly && !['failed','interrupted'].includes(state.nextQuestionJob?.status)) return;
+  const context = sessionContext();
+  state.isBusy = true;
+  setConversationBusy(true);
+  try {
+    if (!readOnly) {
+      const operationId = operationFor('recover', state.nextQuestionJob?.generation);
+      await streamQuestionRequest(context, `/api/sessions/${encodeURIComponent(context.sessionId)}/next-question`, {operation_id: operationId});
+      if (!isSessionContext(context)) return;
+    }
+    const session = await getJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}`);
+    if (!isSessionContext(context)) return;
+    state.pendingOperation = null;
+    renderLiveSession(session);
+    if (state.activeQuestionId) startTimer(false);
+    if (!readOnly && state.activeQuestionId && $('auto-speak').checked) speakText(state.lastQuestion);
+  } catch (error) {
+    if (!isSessionContext(context)) return;
+    try {
+      const session = await getJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}`);
+      if (isSessionContext(context)) renderLiveSession(session);
+    } catch (_) { /* Retain the previous failed job and operation identity. */ }
+    if (isSessionContext(context)) showToast(error.message || '下一题仍未生成，可稍后重试或结束面试。', true);
+  } finally {
+    if (isSessionContext(context)) { state.isBusy = false; state.conversationController = null; setConversationBusy(false); }
+  }
+}
+
+function renderLiveSession(session, retryFinished = false) {
+  state.sessionEnded = ['ended','completed'].includes(session.status);
+  state.nextQuestionJob = session.next_question_job || null;
+  state.round = session.question_cursor || session.turns?.length || 1;
+  applyActiveQuestion(session.active_question);
+  $('chat-area').replaceChildren();
+  (session.transcript || []).forEach(item => addChatMessage(item.role, item.content));
+  const last = (session.transcript || []).at(-1);
+  if (session.active_question && !(last?.role === 'interviewer' && last.content === state.lastQuestion)) addChatMessage('interviewer', state.lastQuestion);
+  if (!session.active_question) {
+    if (retryFinished) addSystemMessage('本次重答已保存。不会继续普通题纲，可主动生成本次复盘报告。');
+    else if (session.review_is_stale) addSystemMessage('本次重答已保存，旧报告仅对应之前的作答。可主动生成本次复盘报告，不会继续普通题纲。');
+    else if (session.status === 'completed') addSystemMessage('面试已结束，报告已生成，可前往“证据报告”查看。');
+    else if (session.status === 'ended') addSystemMessage('面试已结束，记录已保存，未生成报告。需要分析时，可点击“生成报告”。');
+    else if (state.nextQuestionJob?.status === 'running') addSystemMessage('回答已保存，后台仍在生成下一题。稍后点击“刷新当前问题”读取结果。');
+    else addSystemMessage('当前没有待回答的问题，已作答内容仍已保存。可以重新生成下一题，或选择仅保存记录或生成报告。');
+    stopTimer();
+  }
+  updateInterviewMeta();
+  renderNextQuestionRecovery();
+  setConversationBusy(state.isBusy);
 }
 
 async function endInterview() {
@@ -327,11 +447,13 @@ async function confirmEndInterview(generateReport) {
     await followReport(state.sessionId, true);
     return;
   }
+  const context = sessionContext();
   state.isBusy = true;
   setConversationBusy(true);
   for (const id of ['btn-end-only', 'btn-end-report', 'btn-cancel-end']) $(id).disabled = true;
   try {
-    await postJSON(`/api/sessions/${encodeURIComponent(state.sessionId)}/end`, {});
+    await postJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}/end`, {});
+    if (!isSessionContext(context)) return;
     state.sessionEnded = true;
     state.activeQuestionId = null;
     stopTimer(); stopSpeaking();
@@ -341,43 +463,57 @@ async function confirmEndInterview(generateReport) {
     switchView('history');
     showToast('面试已结束，记录已保存，未调用模型生成报告。');
   } catch (error) {
-    $("end-interview-error").textContent = error.message || '保存失败，请检查本地服务后重试。';
+    if (isSessionContext(context)) $("end-interview-error").textContent = error.message || '保存失败，请检查本地服务后重试。';
   } finally {
-    state.isBusy = false;
-    for (const id of ['btn-end-only', 'btn-cancel-end']) $(id).disabled = false;
-    $("btn-end-report").disabled = !state.serviceReady;
-    setConversationBusy(false);
+    if (isSessionContext(context)) {
+      state.isBusy = false;
+      for (const id of ['btn-end-only', 'btn-cancel-end']) $(id).disabled = false;
+      $("btn-end-report").disabled = !state.serviceReady;
+      setConversationBusy(false);
+    }
   }
 }
 
 async function retryQuestion(questionId) {
   if (!state.sessionId || state.isBusy) return;
+  const context = invalidateSessionContext(state.sessionId);
   state.isBusy = true;
   try {
-    const active = await postJSON(`/api/sessions/${encodeURIComponent(state.sessionId)}/retry`, {
+    const active = await postJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}/retry`, {
       question_id: questionId,
     });
-    state.lastQuestion = active.question;
+    if (!isSessionContext(context)) return;
     state.sessionEnded = false;
-    state.activeQuestionId = active.question_id;
-    $("current-focus").textContent = "专项重答";
-    $("focus-detail").textContent = active.focus || "补齐遗漏要点，并加入可验证证据。";
-    addSystemMessage(`开始第 ${active.attempt} 次作答。请聚焦一项关键改进。`);
+    applyActiveQuestion(active);
+    state.lastReport = null;
+    enableView('report', false);
+    setReportExportReady(false);
+    clearAnswerDrafts();
+    localStorage.removeItem('interview-sim-pending-report');
+    $('chat-area').replaceChildren();
+    addSystemMessage(`单题重答 · 第 ${active.attempt} 次作答。提交或跳过后结束本次练习。`);
     addChatMessage("interviewer", active.question);
+    updateInterviewMeta();
+    renderNextQuestionRecovery();
     enableView("interview");
     startTimer(false);
     switchView("interview");
     if ($("auto-speak").checked) speakText(active.question);
     $("input-answer").focus();
   } catch (error) {
-    showToast(error.message || "无法开始专项重答", true);
+    if (isSessionContext(context)) showToast(error.message || "无法开始专项重答", true);
   } finally {
-    state.isBusy = false;
-    setConversationBusy(false);
+    if (isSessionContext(context)) { state.isBusy = false; setConversationBusy(false); }
   }
 }
 
 function renderReport(data) {
+  if (data.schema_version === 2) renderEvidenceReport(data);
+  else renderLegacyReport(data);
+  initializeReportLearning(data);
+}
+
+function renderLegacyReport(data) {
   const score = data.score || {};
   const dimensions = score.dimensions || {};
   const feedback = data.question_feedback || [];
@@ -396,6 +532,7 @@ function renderReport(data) {
   }).join("");
 
   $("report-content").innerHTML = `
+    <section class="surface report-version-note"><strong>旧版五维报告</strong><p>保留生成时的原评分含义与权重，不转换为新版四维表现，也不与新版分数直接比较。</p></section>
     <div class="report-summary">
       <section class="surface score-panel">
         <span class="score-label">TRAINING SCORE</span>
@@ -437,17 +574,17 @@ function renderReport(data) {
           <div class="polish-list">${renderPolish(data.polish_list || [])}</div>
         </section>
       </aside>
-    </div>`;
+    </div>${reportLearningShell()}`;
 }
 
-function renderQuestionFeedback(items) {
+function renderQuestionFeedback(items, versioned = false) {
   if (!items.length) return emptyInline("当前历史报告没有逐题证据。完成一次新面试即可生成。 ");
   const previousScores = new Map();
   return items.map((item) => {
     const score = Number(item.score) || 0;
     const previous = previousScores.get(item.question_id);
     previousScores.set(item.question_id, score);
-    const delta = previous === undefined ? "" : ` · ${score >= previous ? "+" : ""}${score - previous} 分`;
+    const delta = versioned || previous === undefined ? "" : ` · ${score >= previous ? "+" : ""}${score - previous} 分`;
     const evidence = (item.evidence_quotes || []).map((quote) => `<q>${esc(quote)}</q>`).join("、");
     return `<article class="feedback-card">
       <div class="feedback-topline">
@@ -464,6 +601,7 @@ function renderQuestionFeedback(items) {
         <div class="evidence-box missed"><strong>仍缺少</strong>${renderTags(item.missed_points)}</div>
       </div>
       <p class="feedback-evidence"><strong>可验证证据：</strong>${evidence || "没有找到可逐字验证的引用，评分置信度已降低。"}</p>
+      ${versioned ? `<div class="turn-dimensions">${Object.entries(REPORT_DIMENSIONS).map(([key, label]) => `<div><strong>${esc(label)} · ${reportValue(item.dimensions?.[key]?.score, 10)}</strong><p>${esc(item.dimensions?.[key]?.comment || '')}</p></div>`).join('')}</div><div class="report-explanation"><p><strong>这题考察什么：</strong>${esc(item.question_explanation || '暂无说明')}</p><p><strong>下次作答提纲：</strong>${esc(reportText(item.improved_answer_outline) || '请补充真实行动与结果，不编造经历。')}</p></div>` : ''}
       <div class="coaching-row">
         <p><strong>下一次只改这一点：</strong>${esc(item.coaching_tip || "补充具体行动和结果。")}</p>
         <button class="btn secondary" type="button" data-retry-question="${escAttr(item.question_id || "")}">重答这题</button>
@@ -532,7 +670,7 @@ async function loadHistory() {
       <time datetime="${escAttr(session.created_at)}">${formatDate(session.created_at)}</time>
       <strong>${esc(session.job_title || "未命名岗位")}</strong>
       <span>${session.status === 'ended' ? '已结束 · 未生成报告' : session.status === 'completed' ? '报告已生成' : session.status === 'interview_finished' ? '待生成报告' : session.status === 'reviewing' ? '报告生成中' : session.status === 'review_failed' ? '报告待重试' : '面试记录'}</span>
-      <div class="history-meta"><span>${esc(session.persona)} · ${esc(session.difficulty)} · ${Number(session.turn_count) || 0} 次作答</span><span class="history-score">${session.score ?? "--"}</span></div>
+      <div class="history-meta"><span>${esc(session.persona)} · ${esc(session.difficulty)} · ${Number(session.turn_count) || 0} 次作答</span><span class="history-score"><small>${session.score_kind === 'interview_first_attempt' ? '首次面试' : session.score == null ? '未评估' : '旧版五维'}</small>${session.score == null ? '—' : reportNumber(session.score)}</span></div>
     </button>`).join("");
   } catch (error) {
     container.innerHTML = `<div class="surface empty-state tall"><strong>记录加载失败</strong><span>${esc(error.message)}</span></div>`;
@@ -540,75 +678,62 @@ async function loadHistory() {
 }
 
 async function viewSession(sessionId) {
-  if (state.isRecording || state.voice?.processing || state.isBusy) return showToast('请先结束当前操作。');
+  if (state.isRecording || state.voice?.processing) return showToast('请先结束当前录音。');
+  if (($('input-answer').value.trim() || $('voice-transcript').value.trim()) && !window.confirm('打开训练记录会放弃当前未发送的草稿，继续吗？')) return;
+  const context = invalidateSessionContext(sessionId);
+  state.isBusy = true;
+  setConversationBusy(true);
   try {
     const session = await getJSON(`/api/sessions/${encodeURIComponent(sessionId)}`);
-    state.sessionId = session.id;
+    if (!isSessionContext(context)) return;
     state.sessionEnded = session.status === 'ended';
-    state.activeQuestionId = session.active_question?.question_id || null;
+    applyActiveQuestion(session.active_question);
     state.blueprint = session.blueprint || [];
     state.round = session.question_cursor || session.turns?.length || 0;
-    state.lastReport = session.review || null;
+    state.lastReport = session.review_is_stale ? null : session.review || null;
     if (session.config?.voice) $('select-voice').value = session.config.voice;
     if (session.config?.persona) $('select-persona').value = session.config.persona;
     if (session.config?.difficulty) $('select-difficulty').value = session.config.difficulty;
-    state.lastQuestion = session.active_question?.question || [...(session.transcript || [])].reverse().find((item) => item.role === "interviewer")?.content || "";
     $("interview-persona").textContent = session.config?.persona || "面试官";
     $("interview-difficulty").textContent = session.config?.difficulty || "标准";
     const hasInterviewHistory = Boolean(session.active_question || session.turns?.length);
     enableView("interview", hasInterviewHistory);
-    enableView("report", Boolean(session.review));
+    enableView("report", Boolean(session.review) && !session.review_is_stale && !session.active_question?.is_retry);
+    clearAnswerDrafts();
+    // The report and live navigation must always refer to the same saved session.
+    renderLiveSession(session);
 
-    if (!state.sessionEnded && (session.report_job?.status === 'running' || session.report_job?.status === 'failed' || session.status === 'reviewing' || session.status === 'review_failed')) {
+    // An active retry (or any active question) always wins over an old report.
+    if (session.active_question) {
+      localStorage.removeItem('interview-sim-pending-report');
+      startTimer(true);
+      switchView('interview');
+      return;
+    }
+
+    if (!state.sessionEnded && !session.review_is_stale && (session.report_job?.status === 'running' || session.report_job?.status === 'failed' || session.status === 'reviewing' || session.status === 'review_failed')) {
       await followReport(session.id, false);
       return;
     }
 
-    if (session.review) {
+    if (session.review && session.status === 'completed') {
       renderReport(session.review);
+      setReportExportReady(true);
       switchView("report");
       return;
     }
     if (hasInterviewHistory) {
-      $("chat-area").replaceChildren();
-      (session.transcript || []).forEach((item) => addChatMessage(item.role, item.content));
-      if (!session.active_question) {
-        addSystemMessage(state.sessionEnded ? "面试已结束，记录已保存，未生成报告。需要分析时，可点击右上角“生成报告”。" : "当前没有待回答的问题，已作答内容仍已保存。点击“结束面试”可选择仅保存记录或生成报告。");
-      }
-      renderBlueprint();
-      updateInterviewMeta();
-      updateCurrentFocus(Math.max(0, state.round - 1));
-      setConversationBusy(!session.active_question);
-      $("btn-end").disabled = false;
-      $("btn-end").textContent = state.sessionEnded ? '生成报告' : '结束面试';
-      if (state.sessionEnded) stopTimer();
       switchView("interview");
     }
   } catch (error) {
-    showToast(error.message || "记录读取失败", true);
+    if (isSessionContext(context)) showToast(error.message || "记录读取失败", true);
+  } finally {
+    if (isSessionContext(context)) { state.isBusy = false; setConversationBusy(false); }
   }
 }
 
-function renderBlueprint() {
-  const list = $("blueprint-list");
-  $("blueprint-progress").textContent = `${Math.min(state.round, state.blueprint.length)} / ${state.blueprint.length}`;
-  list.innerHTML = state.blueprint.map((item, index) => {
-    const status = index + 1 < state.round ? "done" : index + 1 === state.round ? "current" : "";
-    return `<li class="${status}">${esc(item.dimension || item.dim || `问题 ${index + 1}`)}</li>`;
-  }).join("");
-}
-
-function updateCurrentFocus(index) {
-  const item = state.blueprint[index] || {};
-  $("current-focus").textContent = item.dimension || item.dim || "自适应追问";
-  const expectations = item.expect || [];
-  $("focus-detail").textContent = expectations.length
-    ? `建议覆盖：${expectations.slice(0, 3).join("、")}`
-    : "面试官会根据上一轮回答选择最有价值的追问。";
-}
-
 function updateInterviewMeta() {
-  $("interview-round").textContent = `第 ${state.round} 题`;
+  $("interview-round").textContent = state.activeIsRetry ? `单题重答 · 第 ${state.activeAttempt} 次` : `第 ${state.round} 题`;
 }
 
 function setInputMode(mode) {
@@ -800,9 +925,11 @@ function updateTimer() {
 }
 
 function renderReportMarkdown(data) {
+  if (data.schema_version === 2) return renderEvidenceReportMarkdown(data);
   const lines = [
     "# 面试训练证据报告",
     "",
+    "旧版五维报告：保留原评分含义与权重，不与新版四维分数直接比较。",
     `总分：${data.score?.total ?? 0}/100`,
     `结论：${data.score?.conclusion || ""}`,
     "",
@@ -987,6 +1114,7 @@ function setConversationBusy(busy) {
   $("btn-end").disabled = state.isBusy || !state.sessionId;
   $("btn-end").textContent = state.sessionEnded ? '生成报告' : '结束面试';
   syncVoiceUI();
+  renderNextQuestionRecovery();
 }
 
 function showInlineStatus(message, isError = false) {
@@ -1078,7 +1206,7 @@ async function readTextStream(response, onChunk) {
     const { done, value } = await reader.read();
     if (done) break;
     const text = decoder.decode(value, { stream: true });
-    if (text) onChunk(text);
+    if (text && onChunk(text) === false) { await reader.cancel(); return; }
   }
   const tail = decoder.decode();
   if (tail) onChunk(tail);

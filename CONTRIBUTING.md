@@ -9,12 +9,12 @@
 ```bash
 python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
 python -m pip install --no-deps --no-build-isolation -e .
-python -m unittest discover -s tests -v
+python -m tests.run_tests
 node --check frontend/app.js
-node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs
+node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs tests/test_report_runtime.cjs
 ```
 
-测试使用虚构数据与临时文件，不需要真实 Key。可用 INTERVIEW_SIM_HOME 指向专用临时目录，进一步隔离个人数据。
+测试使用虚构数据与模型替身，不需要真实 Key。统一入口在导入应用前创建临时 INTERVIEW_SIM_HOME / SESSION_DIR，并注入无效的合成连接；结束后清理，仅把测试退出码传回。请优先使用此入口，不要直接在私人配置环境中运行 unittest discover。
 
 跨平台浏览器验收（自动创建隔离服务并在结束后停止，不使用真实模型）：
 

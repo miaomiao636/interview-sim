@@ -33,5 +33,7 @@ dist/
 build/
 .release/
 .test-data/
+preparations/
+docs/IMPLEMENTATION_PLAN_EXPERT_WORKBENCH.md
 # Machine-local location written only into installed Skill copies
 interview-sim-location.json

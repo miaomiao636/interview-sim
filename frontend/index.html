@@ -21,19 +21,22 @@
 
       <nav class="nav-list" aria-label="功能导航">
         <button class="nav-btn active" data-view="config" type="button">
-          <span class="nav-index">01</span><span>准备面试</span>
+          <span class="nav-index">01</span><span>岗位工作台</span>
+        </button>
+        <button class="nav-btn" data-view="preparation" type="button" disabled>
+          <span class="nav-index">02</span><span>岗位准备</span>
         </button>
         <button class="nav-btn" data-view="interview" type="button" disabled>
-          <span class="nav-index">02</span><span>模拟现场</span>
+          <span class="nav-index">03</span><span>模拟现场</span>
         </button>
         <button class="nav-btn" data-view="report" type="button" disabled>
-          <span class="nav-index">03</span><span>证据报告</span>
+          <span class="nav-index">04</span><span>证据报告</span>
         </button>
         <button class="nav-btn" data-view="history" type="button">
-          <span class="nav-index">04</span><span>训练记录</span>
+          <span class="nav-index">05</span><span>训练记录</span>
         </button>
         <button class="nav-btn" data-view="settings" type="button">
-          <span class="nav-index">05</span><span>系统设置</span>
+          <span class="nav-index">06</span><span>系统设置</span>
         </button>
       </nav>
 
@@ -52,7 +55,7 @@
           <div>
             <p class="eyebrow">PREPARE</p>
             <h1 id="config-title">让每一次练习都有目标</h1>
-            <p class="page-lead">提供岗位与真实经历，系统会先建立考察蓝图，再进入模拟现场。</p>
+            <p class="page-lead">选定岗位后按需打磨材料，或直接开始实战面试。准备不是必经步骤。</p>
           </div>
           <span class="stage-badge">阶段 1 / 3</span>
         </header>
@@ -162,6 +165,8 @@
         </details>
       </section>
 
+      <section id="view-preparation" class="view" aria-labelledby="prep-title"></section>
+
       <section id="view-interview" class="view" aria-labelledby="interview-title">
         <header class="interview-toolbar">
           <div>
@@ -235,28 +240,10 @@
                 <label class="sr-only" for="skip-reason">跳过原因（选填）</label><select id="skip-reason"><option value="">跳过原因（选填）</option><option value="暂时没有思路">暂时没有思路</option><option value="缺少相关经历">缺少相关经历</option><option value="想稍后专项练习">想稍后专项练习</option><option value="本次不想回答">本次不想回答</option></select>
                 <button id="btn-skip" class="btn secondary" type="button" disabled>跳过本题，进入下一题</button><small>本题记为未回答，计入报告</small>
               </div>
+              <div id="next-question-recovery" class="recovery-row hidden" role="status"><p id="next-question-status"></p><button id="btn-recover-question" class="btn secondary" type="button">重新生成下一题</button><small>只生成下一题，不会重复保存已提交的回答。</small></div>
             </div>
           </article>
 
-          <aside class="interview-rail">
-            <section class="surface rail-card focus-card">
-              <p class="rail-label">当前训练重点</p>
-              <h2 id="current-focus">建立清晰、可验证的回答</h2>
-              <p id="focus-detail">先交代背景，再说明你的具体行动与结果。</p>
-            </section>
-            <section class="surface rail-card">
-              <div class="rail-heading"><h2>面试蓝图</h2><span id="blueprint-progress">0 / 0</span></div>
-              <ol id="blueprint-list" class="blueprint-list"></ol>
-            </section>
-            <section class="surface rail-card compact-card">
-              <p class="rail-label">回答建议</p>
-              <ul class="micro-tips">
-                <li>先给结论，再补充背景</li>
-                <li>说明你本人做了什么</li>
-                <li>没有真实数字就不要猜</li>
-              </ul>
-            </section>
-          </aside>
         </div>
       </section>
 
@@ -268,9 +255,9 @@
             <p class="page-lead">分数用于比较训练变化；每一个判断都应能回到你的原回答。</p>
           </div>
           <div class="report-actions">
-            <button id="btn-export-md" class="btn secondary" type="button">导出 Markdown</button>
-            <button id="btn-export-json" class="btn secondary" type="button">导出 JSON</button>
-            <button id="btn-print" class="btn secondary" type="button">打印 / PDF</button>
+            <button id="btn-export-md" class="btn secondary" type="button" disabled>导出 Markdown</button>
+            <button id="btn-export-json" class="btn secondary" type="button" disabled>导出 JSON</button>
+            <button id="btn-print" class="btn secondary" type="button" disabled>打印 / PDF</button>
           </div>
         </header>
         <div id="report-content" aria-live="polite">
@@ -355,6 +342,7 @@
   <script src="/assets/voice.js"></script>
   <script src="/assets/workspace.js"></script>
   <script src="/assets/jobs.js"></script>
+  <script src="/assets/preparation.js"></script>
   <script src="/assets/reports.js"></script>
   <script src="/assets/app.js"></script>
 </body>

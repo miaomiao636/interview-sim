@@ -45,6 +45,7 @@ class SessionStoreTests(unittest.TestCase):
         session = store.create_session("JD", "简历", "HR", "标准")
         store.set_active_question(session["id"], "q-1", "为什么选择我们？", 1)
         store.record_answer(session["id"], "第一次回答")
+        store.end_session(session["id"])
 
         retry = store.prepare_retry(session["id"], "q-1")
 

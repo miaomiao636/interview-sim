@@ -5,22 +5,28 @@ import re
 import time
 import statistics
 import asyncio
-from typing import Any, Optional
+import copy
+import uuid
+from typing import Any, Optional, Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from .. import config, prompts, store
 from ..xiaomi_client import chat_once
 from ..report_pipeline import build_report, fingerprint, stage_count, PIPELINE_VERSION
 from ..structured import public_model_error
+from ..report_models import ReportV2
 
 router = APIRouter()
 _jobs = {}
+_job_identities = {}
+_all_jobs = set()
+SessionId = Annotated[str, Path(pattern=store.SESSION_ID_PATTERN)]
 
 
 @router.get("/api/review/estimate")
-async def review_estimate(session_id: str = ''):
+async def review_estimate(session_id: str = Query(default='', pattern=r'^(?:[0-9a-f]{8})?$')):
     durations = []
     for summary in store.list_sessions()[:30]:
         session = store.get_session(summary["id"])
@@ -39,7 +45,7 @@ async def review_estimate(session_id: str = ''):
 
 
 class ReviewRequest(BaseModel):
-    session_id: str
+    session_id: str = Field(pattern=store.SESSION_ID_PATTERN)
 
 
 class ReviewResponse(BaseModel):
@@ -53,38 +59,79 @@ class ReviewResponse(BaseModel):
     tailored_resume_warnings: list = Field(default_factory=list)
 
 
-@router.post("/api/review", response_model=ReviewResponse)
+@router.post("/api/review", response_model=ReportV2 | ReviewResponse)
 async def review(req: ReviewRequest):
     """Compatible synchronous entry point; the web UI uses the resumable job API."""
     task = start_review(req.session_id)
     result = await asyncio.shield(task)
     if result is None:
         raise HTTPException(502, store.get_session(req.session_id)['report_job']['error'])
-    return ReviewResponse(**result)
+    return result
 
 
 def start_review(session_id):
-    running = _jobs.get(session_id)
-    if running and not running.done():
-        return running
-    session = store.get_session(session_id)
-    if session is None:
-        raise HTTPException(404, '面试记录不存在。')
-    if session.get('active_question'):
-        store.record_answer(session_id, '', skipped=True, reason='结束面试时本题尚未回答')
+    with store.locked_session(session_id):
+        session = recover_report_job(session_id)
+        if session is None:
+            raise HTTPException(404, '面试记录不存在。')
+        key = store.session_key(session_id)
+        running = _jobs.get(key)
+        if running and not running.done() and (session.get('report_job') or {}).get('status') == 'running':
+            return running
+        if session.get('active_question'):
+            store.record_answer(session_id, '', skipped=True, reason='结束面试时本题尚未回答')
+            session = store.get_session(session_id)
+        if not session.get('turns'):
+            raise HTTPException(422, '尚无作答记录，请先完成至少一道题。')
+        store._archive_review(session)
+        store.invalidate_question_generation(session, '已结束问答，正在生成报告。')
+        signature = fingerprint(session)
+        work = copy.deepcopy(session.get('report_work') or {})
+        if work.get('signature') != signature:
+            work = {'signature': signature, 'stages': {}, 'feedback_cache': work.get('feedback_cache', {})}
+        previous = session.get('report_job') or {}
+        job = {'id': uuid.uuid4().hex, 'generation': int(previous.get('generation', 0)) + 1, 'input_signature': signature,
+               'status':'running', 'stage':'准备分析', 'completed':len(work['stages']), 'total':stage_count(session), 'started_at':time.time(), 'error':'', 'retrying':False}
+        session.update(report_job=job, report_work=work, status='reviewing')
+        store._save(session)
+        task = asyncio.create_task(_run_review(copy.deepcopy(session), work, copy.deepcopy(job), dict(config.get_connection('analysis')), config.LLM_MODEL_PRO))
+        _jobs[key] = task
+        _job_identities[key] = (job['id'], job['generation'])
+        _all_jobs.add(task)
+        def finished(done):
+            _all_jobs.discard(done)
+            if _jobs.get(key) is done:
+                _jobs.pop(key, None)
+                _job_identities.pop(key, None)
+        task.add_done_callback(finished)
+        return task
+
+
+def recover_report_job(session_id):
+    """Uniform read/retry/end/chat recovery; never resumes a model implicitly."""
+    with store.locked_session(session_id):
         session = store.get_session(session_id)
-    if not session.get('turns'):
-        raise HTTPException(422, '尚无作答记录，请先完成至少一道题。')
-    signature = fingerprint(session)
-    work = session.get('report_work') or {}
-    if work.get('signature') != signature:
-        work = {'signature': signature, 'stages': {}}
-    job = {'status':'running', 'stage':'准备分析', 'completed':len(work['stages']), 'total':stage_count(session), 'started_at':time.time(), 'error':'', 'retrying':False}
-    store.update_session(session_id, {'report_job':job, 'report_work':work, 'status':'reviewing'})
-    task = asyncio.create_task(_run_review(session, work, job))
-    _jobs[session_id] = task
-    task.add_done_callback(lambda finished: _jobs.pop(session_id, None) if _jobs.get(session_id) is finished else None)
-    return task
+        if session is None:
+            return None
+        job = session.get('report_job') or {}
+        if job.get('status') == 'running':
+            key = store.session_key(session_id)
+            runner = _jobs.get(key)
+            owned = runner is not None and not runner.done() and _job_identities.get(key) == (job.get('id'), job.get('generation'))
+            if not owned or job.get('input_signature') != fingerprint(session):
+                job.update(status='failed', error='本地服务曾重新启动或报告输入已变化；已完成部分仍保留，请明确继续生成。', finished_at=time.time())
+                session['report_job'] = job
+                if session.get('status') == 'reviewing':
+                    session['status'] = 'interviewing' if session.get('active_question') else 'review_failed'
+                store._save(session)
+        return session
+
+
+def _report_current(session, job):
+    current = session.get('report_job') or {}
+    return (session.get('status') == 'reviewing' and current.get('status') == 'running'
+            and current.get('id') == job['id'] and current.get('generation') == job['generation']
+            and fingerprint(session) == job['input_signature'])
 
 
 @router.post('/api/review/jobs', status_code=202)
@@ -94,45 +141,87 @@ async def create_review_job(req: ReviewRequest):
 
 
 @router.get('/api/sessions/{session_id}/review-job')
-async def review_job_status(session_id: str):
-    session = store.get_session(session_id)
-    if session is None:
-        raise HTTPException(404, '面试记录不存在。')
-    job = dict(session.get('report_job') or {'status':'idle'})
-    if job['status'] == 'running' and session_id not in _jobs:
-        job.update(status='failed', error='本地服务曾重新启动；已完成部分仍保留，点击继续生成。')
-        store.update_session(session_id, {'report_job':job})
+async def review_job_status(session_id: SessionId):
+    with store.locked_session(session_id):
+        session = recover_report_job(session_id)
+        if session is None:
+            raise HTTPException(404, '面试记录不存在。')
+        job = dict(session.get('report_job') or {'status':'idle'})
     job['elapsed_seconds'] = round(time.time() - job['started_at']) if job.get('started_at') else 0
     if job.get('finished_at'):
         job['elapsed_seconds'] = round(job['finished_at'] - job['started_at'])
     if job['status'] == 'completed':
         job['report'] = session.get('review')
+        job['stale'] = bool(session.get('review_is_stale'))
     return job
 
 
-async def _run_review(session, work, job):
+async def _run_review(session, work, job, connection=None, model=None):
     session_id = session['id']
     def progress(label, completed, retrying):
-        job.update(stage=label, completed=completed, retrying=retrying)
-        store.update_session(session_id, {'report_job':dict(job), 'report_work':work})
+        with store.locked_session(session_id):
+            current = store.get_session(session_id)
+            if not current or not _report_current(current, job):
+                raise asyncio.CancelledError
+            job.update(stage=label, completed=completed, retrying=retrying)
+            current.update(report_job=copy.deepcopy(job), report_work=copy.deepcopy(work))
+            store._save(current)
+    async def call(**kwargs):
+        with store.locked_session(session_id):
+            current = store.get_session(session_id)
+            if not current or not _report_current(current, job):
+                raise asyncio.CancelledError
+        kwargs['model'] = model or kwargs.get('model')
+        return await chat_once(**kwargs, connection_snapshot=connection)
     try:
-        raw = await build_report(session, chat_once, work, progress)
-        result = _normalize_review(raw, session['config']['resume'], session['turns'], session.get('blueprint') or [])
-        job.update(status='completed', stage='报告已完成', completed=job['total'], finished_at=time.time())
-        duration = sum(item['duration'] for item in work['stages'].values())
-        store.update_session(session_id, {'review':result, 'status':'completed', 'report_job':job,
-            'report_work':work, 'review_duration_seconds':round(duration,2), 'report_pipeline_version':PIPELINE_VERSION})
-        return result
-    except Exception as exc:
-        job.update(status='failed', error=public_model_error(exc), finished_at=time.time())
-        store.update_session(session_id, {'report_job':job, 'report_work':work, 'status':'review_failed'})
+        raw = await build_report(session, call, work, progress)
+        result = (ReportV2.model_validate(raw).model_dump() if raw.get('schema_version') == 2 else
+                  _normalize_review(raw, session['config']['resume'], session['turns'], session.get('blueprint') or []))
+        with store.locked_session(session_id):
+            current = store.get_session(session_id)
+            if not current or not _report_current(current, job):
+                return None
+            job.update(status='completed', stage='报告已完成', completed=job['total'], finished_at=time.time())
+            duration = sum(item['duration'] for item in work['stages'].values())
+            current.update(review=result, status='completed', report_job=job, report_work=work, review_is_stale=False,
+                           review_duration_seconds=round(duration, 2), report_pipeline_version=PIPELINE_VERSION)
+            store._save(current)
+            return result
+    except (Exception, asyncio.CancelledError) as exc:
+        with store.locked_session(session_id):
+            current = store.get_session(session_id)
+            if current and _report_current(current, job):
+                error = '服务已中断，请明确继续生成报告。' if isinstance(exc, asyncio.CancelledError) else public_model_error(exc)
+                job.update(status='failed', error=error, finished_at=time.time())
+                current.update(report_job=job, report_work=work, status='review_failed')
+                store._save(current)
         return None
+
+
+async def shutdown_report_jobs():
+    for key, task in list(_jobs.items()):
+        _, session_id = key
+        with store.locked_session(session_id):
+            session = store.get_session(session_id)
+            job = (session or {}).get('report_job') or {}
+            if session and job.get('status') == 'running' and _job_identities.get(key) == (job.get('id'), job.get('generation')):
+                job.update(status='failed', error='服务已关闭，已完成部分仍保留，请明确继续生成。', finished_at=time.time())
+                session.update(report_job=job, status='review_failed')
+                store._save(session)
+    active = list(_all_jobs)
+    for task in active:
+        task.cancel()
+    if active:
+        await asyncio.gather(*active, return_exceptions=True)
+    _jobs.clear()
+    _job_identities.clear()
+    _all_jobs.clear()
 
 
 
 
 class RetryRequest(BaseModel):
-    question_id: str
+    question_id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$')
 
 
 class EndSessionResponse(BaseModel):
@@ -143,24 +232,28 @@ class EndSessionResponse(BaseModel):
 
 
 @router.post("/api/sessions/{session_id}/end", response_model=EndSessionResponse)
-async def end_session(session_id: str):
+async def end_session(session_id: SessionId):
     """Idempotent local-only finish; does not start or cancel any report job."""
-    session = store.get_session(session_id)
-    if session is None:
-        raise HTTPException(404, "面试记录不存在。")
-    if (session.get('report_job') or {}).get('status') == 'running':
-        raise HTTPException(409, "报告已开始生成；仅结束面试不会取消正在运行的报告，请前往证据报告查看。")
-    session = store.end_session(session_id)
+    with store.locked_session(session_id):
+        session = recover_report_job(session_id)
+        if session is None:
+            raise HTTPException(404, "面试记录不存在。")
+        if (session.get('report_job') or {}).get('status') == 'running':
+            raise HTTPException(409, "报告已开始生成；仅结束面试不会取消正在运行的报告，请前往证据报告查看。")
+        session = store.end_session(session_id)
     return EndSessionResponse(id=session['id'], status=session['status'],
         ended_at=session.get('ended_at'), turn_count=len(session.get('turns', [])))
 
 
 @router.post("/api/sessions/{session_id}/retry")
-async def retry_question(session_id: str, req: RetryRequest):
+async def retry_question(session_id: SessionId, req: RetryRequest):
     """Prepare a previous question for another deliberate-practice attempt."""
-    if session_id in _jobs and not _jobs[session_id].done():
-        raise HTTPException(409, '报告正在生成，请完成后再开始专项重答。')
-    active = store.prepare_retry(session_id, req.question_id)
+    try:
+        with store.locked_session(session_id):
+            recover_report_job(session_id)
+            active = store.prepare_retry(session_id, req.question_id)
+    except store.SessionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     if active is None:
         raise HTTPException(status_code=404, detail="Question not found")
     return active
@@ -173,11 +266,16 @@ async def list_sessions():
 
 
 @router.get("/api/sessions/{session_id}")
-async def get_session(session_id: str):
+async def get_session(session_id: SessionId):
     """获取单个面试详情"""
-    session = store.get_session(session_id)
+    from .chat import recover_question_job
+    with store.locked_session(session_id):
+        recover_report_job(session_id)
+        session = recover_question_job(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session.get('active_question'):
+        session['active_question'].pop('focus', None)
     return session
 
 

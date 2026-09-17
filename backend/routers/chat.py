@@ -2,62 +2,143 @@
 from __future__ import annotations
 import json
 import re
+import asyncio
+import copy
+import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .. import config, prompts, store
 from ..xiaomi_client import chat_stream
 
 router = APIRouter()
+SessionId = Annotated[str, Path(pattern=store.SESSION_ID_PATTERN)]
+_next_jobs = {}
+MAX_QUESTION_CHARS = 16000
+MAX_STREAM_CHUNKS = 4096
 
 
-class SkipRequest(BaseModel):
-    question_id: str
+class OperationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    operation_id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$')
+
+
+class SkipRequest(OperationRequest):
+    question_id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$')
+    attempt: int = Field(ge=1)
     reason: str = Field(default="", max_length=200)
 
 
 @router.post("/api/sessions/{session_id}/skip")
-async def skip(session_id: str, req: SkipRequest):
-    result = store.skip_question(session_id, req.question_id, req.reason)
-    if result is None:
-        raise HTTPException(status_code=409, detail="当前问题已变化或已处理，请重新载入训练记录。")
-    return result
+async def skip(session_id: SessionId, req: SkipRequest):
+    from .review import recover_report_job
+    try:
+        with store.locked_session(session_id):
+            recover_report_job(session_id)
+            recover_question_job(session_id)
+            result = store.submit_answer(session_id, req.question_id, req.attempt, req.operation_id, '', skipped=True, reason=req.reason)
+            if result is None:
+                raise HTTPException(404, '面试记录不存在。')
+            return result
+    except store.SessionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
-class ChatRequest(BaseModel):
-    session_id: str
-    asr_text: str  # 用户语音转写或文本输入
-    history: list[dict] = Field(default_factory=list)  # 兼容旧客户端，服务端不再信任它
+class ChatRequest(SkipRequest):
+    session_id: str = Field(pattern=store.SESSION_ID_PATTERN)
+    asr_text: str = Field(min_length=1, max_length=50000)
+    history: list[dict] = Field(default_factory=list, max_length=100)
+
+
+def _empty_response(text=''):
+    return StreamingResponse(iter([text]), media_type='text/plain')
+
+
+def recover_question_job(session_id):
+    with store.locked_session(session_id):
+        session = store.get_session(session_id)
+        if session is None:
+            return None
+        job = session.get('next_question_job') or {}
+        runtime = _next_jobs.get(store.session_key(session_id))
+        last = (session.get('turns') or [{}])[-1]
+        if (session.get('status') == 'interviewing' and not session.get('active_question')
+                and last.get('status') == 'answered' and not last.get('is_retry')
+                and job.get('status') in {None, 'completed'}):
+            # A process can stop after saving the accepted answer and before
+            # reserving its next model job. GET repairs only local state.
+            generation = int(session.get('question_generation', 0)) + 1
+            job = {'id': uuid.uuid4().hex, 'generation': generation, 'status': 'interrupted',
+                   'input_signature': store.question_input_signature(session),
+                   'question_id': f"q-{int(session.get('question_cursor', 0)) + 1}",
+                   'parent_question_id': last['question_id'],
+                   'error': '回答已保存，下一题生成曾中断。请点击重新生成下一题。'}
+            session.update(next_question_job=job, question_generation=generation)
+            store._save(session)
+        if job.get('status') == 'running' and (not runtime or runtime['job']['generation'] != job.get('generation') or runtime['task'].done()):
+            job.update(status='interrupted', error='本地服务已中断，请点击重新生成下一题；原回答已保存。')
+            session['next_question_job'] = job
+            store._save(session)
+        return session
+
+
+def _question_current(session, job):
+    current = session.get('next_question_job') or {}
+    return (session.get('status') == 'interviewing' and not session.get('active_question')
+            and current.get('status') == 'running' and current.get('id') == job['id']
+            and current.get('generation') == job['generation']
+            and session.get('question_generation') == job['generation']
+            and store.question_input_signature(session) == job['input_signature'])
 
 
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
-    """面试官流式对话"""
-    session = store.get_session(req.session_id)
-    if session is None:
-        return StreamingResponse(
-            iter([b"session not found"]),
-            media_type="text/plain",
-            status_code=404,
-        )
+    """Save one fenced answer, then start at most one next-question generation."""
+    from .review import recover_report_job
+    try:
+        with store.locked_session(req.session_id):
+            recover_report_job(req.session_id)
+            recover_question_job(req.session_id)
+            if not req.asr_text.strip():
+                raise HTTPException(422, '回答不能为空；不想回答可使用跳过。')
+            result = store.submit_answer(req.session_id, req.question_id, req.attempt, req.operation_id, req.asr_text)
+            if result is None:
+                raise HTTPException(404, '面试记录不存在。')
+            if result['reused']:
+                return _empty_response(result.get('response_text', ''))
+            if result['finished']:
+                return _empty_response()
+            return _start_question(req.session_id, req.operation_id, 'answer_operations')
+    except store.SessionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
-    if (session.get('report_job') or {}).get('status') == 'running':
-        raise HTTPException(409, '报告正在生成，请完成后再开始专项重答。')
 
-    # 服务端 active_question 是会话事实源，避免首题丢失和当前回答重复。
-    turn = store.record_answer(req.session_id, req.asr_text)
-    if turn is None:
-        return StreamingResponse(
-            iter([b"no active question"]),
-            media_type="text/plain",
-            status_code=409,
-        )
+@router.post('/api/sessions/{session_id}/next-question')
+async def recover_next_question(session_id: SessionId, req: OperationRequest):
+    from .review import recover_report_job
+    with store.locked_session(session_id):
+        recover_report_job(session_id)
+        session = recover_question_job(session_id)
+        if session is None:
+            raise HTTPException(404, '面试记录不存在。')
+        if req.operation_id in session.get('answer_operations', {}):
+            raise HTTPException(409, '该操作编号已用于提交回答，请使用新的恢复操作编号。')
+        previous = session.get('recovery_operations', {}).get(req.operation_id)
+        if previous:
+            return _empty_response(previous.get('result', {}).get('response_text', ''))
+        job = session.get('next_question_job') or {}
+        if (job.get('status') not in {'failed', 'interrupted'} or session.get('active_question')
+                or session.get('status') in store.TERMINAL_STATES or not session.get('turns')):
+            raise HTTPException(409, '当前状态不可重新生成下一题，请刷新面试记录。')
+        session.setdefault('recovery_operations', {})[req.operation_id] = {'result': {}}
+        store._save(session)
+        return _start_question(session_id, req.operation_id, 'recovery_operations')
 
-    session = store.get_session(req.session_id)
 
-    # 构造面试官 prompt
+def _messages(session):
     cfg = session["config"]
     interviewer_sys = prompts.build_interviewer_prompt(
         jd=cfg["jd"],
@@ -76,7 +157,6 @@ async def chat(req: ChatRequest):
         company_context=cfg.get('company_context',''),
     )
 
-    # 构造消息列表
     messages = [{"role": "system", "content": interviewer_sys}]
 
     # 加入题纲上下文（精简版）
@@ -90,10 +170,10 @@ async def chat(req: ChatRequest):
             "content": f"本次面试题纲概要（仅供你参考，不要直接念出）：{blueprint_summary}",
         })
 
-    # 只使用服务端持久化记录；当前回答已在 transcript 中且只加入一次。
-    for dialog in session.get("transcript", []):
+    # Bound context while retaining the latest real answer and company materials.
+    for dialog in session.get("transcript", [])[-30:]:
         role = "user" if dialog.get("role") == "candidate" else "assistant"
-        messages.append({"role": role, "content": dialog.get("content", "")})
+        messages.append({"role": role, "content": str(dialog.get("content", ""))[:12000]})
 
     next_number = int(session.get("question_cursor", 0)) + 1
     messages.append({
@@ -105,24 +185,102 @@ async def chat(req: ChatRequest):
         ),
     })
 
-    # 流式返回
-    async def generate():
-        full_response = []
-        async for token in chat_stream(messages, model=config.LLM_MODEL, temperature=0.7):
-            full_response.append(token)
-            yield token
-        next_question = "".join(full_response).strip()
-        if next_question:
-            blueprint = session.get("blueprint") or []
-            blueprint_item = blueprint[next_number - 1] if next_number <= len(blueprint) else {}
-            store.set_active_question(
-                req.session_id,
-                question_id=f"q-{next_number}",
-                question=next_question,
-                blueprint_id=blueprint_item.get("id"),
-            )
+    return messages
 
-    return StreamingResponse(generate(), media_type="text/plain")
+
+def _start_question(session_id, operation_id, operation_table):
+    session = store.get_session(session_id)
+    generation = int(session.get('question_generation', 0)) + 1
+    job = {'id': uuid.uuid4().hex, 'generation': generation, 'status': 'running', 'error': '',
+           'input_signature': store.question_input_signature(session), 'question_id': f"q-{int(session.get('question_cursor', 0)) + 1}",
+           'parent_question_id': session['turns'][-1]['question_id'], 'operation_id': operation_id, 'operation_table': operation_table}
+    session.update(question_generation=generation, next_question_job=job)
+    store._save(session)
+    queue = asyncio.Queue(maxsize=MAX_STREAM_CHUNKS + 1)
+    closed = False
+    def close_stream():
+        nonlocal closed
+        if not closed:
+            closed = True
+            queue.put_nowait(None)
+    snapshot = copy.deepcopy(session)
+    connection = dict(config.get_connection('chat'))
+    task = asyncio.create_task(_run_question(snapshot, copy.deepcopy(job), queue, connection, config.LLM_MODEL, close_stream))
+    key = store.session_key(session_id)
+    _next_jobs[key] = {'job': job, 'task': task}
+    def finished(done):
+        # Also runs if shutdown cancels the task before its first instruction.
+        close_stream()
+        if (_next_jobs.get(key) or {}).get('task') is done:
+            _next_jobs.pop(key, None)
+    task.add_done_callback(finished)
+    async def stream():
+        while True:
+            token = await queue.get()
+            if token is None:
+                break
+            yield token
+    return StreamingResponse(stream(), media_type='text/plain')
+
+
+async def _run_question(snapshot, job, queue, connection, model, close_stream):
+    session_id = snapshot['id']
+    parts = []
+    size = 0
+    async def receive():
+        nonlocal size
+        with store.locked_session(session_id):
+            if not _question_current(store.get_session(session_id) or {}, job):
+                return
+        async for token in chat_stream(_messages(snapshot), model=model, temperature=0.7, connection_snapshot=connection):
+            with store.locked_session(session_id):
+                if not _question_current(store.get_session(session_id) or {}, job):
+                    return
+            if not isinstance(token, str) or not token:
+                continue
+            size += len(token)
+            if size > MAX_QUESTION_CHARS or len(parts) >= MAX_STREAM_CHUNKS:
+                raise ValueError('question stream exceeded local bound')
+            parts.append(token)
+            queue.put_nowait(token)
+    try:
+        await asyncio.wait_for(receive(), timeout=100)
+        text = ''.join(parts).strip()
+        with store.locked_session(session_id):
+            session = store.get_session(session_id)
+            if not session or not _question_current(session, job):
+                return
+            if not text:
+                raise ValueError('empty next question')
+            store._activate(session, job['question_id'], text, None, question_kind='adaptive', parent_question_id=job['parent_question_id'])
+            session = store.get_session(session_id)
+            session['next_question_job'].update(status='completed', error='')
+            operation = session[job['operation_table']][job['operation_id']]
+            operation['result']['response_text'] = text
+            store._save(session)
+    except (Exception, asyncio.CancelledError) as exc:
+        with store.locked_session(session_id):
+            session = store.get_session(session_id)
+            if session and _question_current(session, job):
+                session['next_question_job'].update(status='interrupted' if isinstance(exc, asyncio.CancelledError) else 'failed',
+                                                   error='下一题暂未生成，原回答已保存。请点击重新生成下一题，或结束面试。')
+                store._save(session)
+    finally:
+        close_stream()
+
+
+async def shutdown_question_jobs():
+    active = list(_next_jobs.items())
+    for (_, session_id), runtime in active:
+        with store.locked_session(session_id):
+            session = store.get_session(session_id)
+            if session and _question_current(session, runtime['job']):
+                session['next_question_job'].update(status='interrupted', error='服务已关闭，原回答已保存。请重新生成下一题。')
+                store._save(session)
+        runtime['task'].cancel()
+    if active:
+        await asyncio.gather(*(runtime['task'] for _, runtime in active), return_exceptions=True)
+    _next_jobs.clear()
 
 
 class TranscribeRequest(BaseModel):

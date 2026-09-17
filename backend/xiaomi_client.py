@@ -21,9 +21,9 @@ def reset_client():
     _clients.clear()
 
 
-def get_client(role="chat"):
+def get_client(role="chat", connection_snapshot=None):
     # type: () -> AsyncOpenAI
-    connection = config.get_connection(role)
+    connection = connection_snapshot if connection_snapshot is not None else config.get_connection(role)
     identity = (role, connection["base_url"], connection["api_key"])
     if identity not in _clients:
         _clients[identity] = AsyncOpenAI(
@@ -41,10 +41,11 @@ async def chat_stream(
     model=None,  # type: Optional[str]
     temperature=0.7,  # type: float
     max_tokens=2048,  # type: int
+    connection_snapshot=None,
 ):
     # type: (...) -> AsyncGenerator[str, None]
     """流式调用 LLM，逐 token 产出文本"""
-    client = get_client()
+    client = get_client('chat', connection_snapshot=connection_snapshot) if connection_snapshot is not None else get_client()
     model = model or config.LLM_MODEL
     stream = await client.chat.completions.create(
         model=model,
@@ -67,10 +68,11 @@ async def chat_once(
     temperature=0.7,  # type: float
     max_tokens=4096,  # type: int
     json_mode=False,
+    connection_snapshot=None,
 ):
     # type: (...) -> str
     """一次性调用 LLM，返回完整文本"""
-    client = get_client("analysis")
+    client = get_client("analysis", connection_snapshot=connection_snapshot) if connection_snapshot is not None else get_client("analysis")
     model = model or config.LLM_MODEL
     options = {}
     if json_mode:
@@ -78,7 +80,8 @@ async def chat_once(
         options['response_format'] = {'type': 'json_object'}
         # MiMo enables thinking by default; these bounded extraction/scoring
         # calls use JSON mode with thinking disabled as documented by MiMo.
-        host = urlparse(config.get_connection('analysis')['base_url']).hostname
+        connection = connection_snapshot if connection_snapshot is not None else config.get_connection('analysis')
+        host = urlparse(connection['base_url']).hostname
         if host in {'api.xiaomimimo.com'} and model.startswith('mimo-v2.5'):
             options['extra_body'] = {'thinking': {'type': 'disabled'}}
     resp = await client.chat.completions.create(

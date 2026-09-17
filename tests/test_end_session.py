@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -63,10 +64,20 @@ class EndSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.post('/api/sessions/00000000/end')).status_code, 404)
 
     async def test_running_report_is_not_silently_cancelled(self):
-        store.update_session(self.sid, {'report_job': {'status': 'running'}, 'status': 'reviewing'})
-        self.assertEqual((await self.finish()).status_code, 409)
-        self.assertEqual(store.get_session(self.sid)['status'], 'reviewing')
-        self.assertIsNotNone(store.get_session(self.sid)['active_question'])
+        from backend.routers.review import start_review
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def blocked(*args):
+            entered.set()
+            await release.wait()
+            return {}
+        with patch('backend.routers.review.build_report', blocked):
+            running = start_review(self.sid)
+            await asyncio.wait_for(entered.wait(), 3)
+            self.assertEqual((await self.finish()).status_code, 409)
+            self.assertEqual(store.get_session(self.sid)['status'], 'reviewing')
+            self.assertEqual(store.get_session(self.sid)['report_job']['status'], 'running')
+            release.set()
+            await running
 
     async def test_completed_report_is_not_overwritten(self):
         store.record_answer(self.sid, '已回答')

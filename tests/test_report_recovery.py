@@ -6,15 +6,16 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from backend import config, store
 from backend.main import app
-from backend.routers.review import start_review, review_job_status, SCORE_WEIGHTS
+from backend.routers.review import start_review, review_job_status
+from tests.test_report_v2 import feedback as feedback_item, turn
 
 
-def feedback():
-    return json.dumps({'question_feedback':[{'question_id':'q-1','attempt':1,'score':6,'evidence_quotes':['需求访谈'],'coaching_tip':'补充具体结果'}]}, ensure_ascii=False)
+def feedback(answer='我组织过需求访谈。'):
+    return json.dumps({'question_feedback': [feedback_item(turn(answer=answer))]}, ensure_ascii=False)
 
 
 def summary():
-    return json.dumps({'score':{'dimensions':{name:{'score':maximum/2,'comment':'有待提升'} for name,maximum in SCORE_WEIGHTS.items()},'conclusion':'继续练习'},'interview_tips':['补充具体结果'],'practice_plan':[]})
+    return json.dumps({'interview_tips':['补充具体结果'],'practice_plan':[]})
 
 
 class ReportRecoveryTests(unittest.TestCase):
@@ -72,7 +73,7 @@ class ReportJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('重新启动', status['error'])
 
     async def test_new_answer_invalidates_previous_report_cache(self):
-        responses = iter([feedback(), summary(), feedback(), summary()])
+        responses = iter([feedback(), summary(), feedback('修改后的真实回答'), summary()])
         calls = []
         async def model(**kwargs):
             calls.append(kwargs)

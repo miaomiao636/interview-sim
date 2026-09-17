@@ -31,14 +31,14 @@ class WorkspaceFeatureTests(unittest.TestCase):
 
     def test_skip_persists_zero_evidence_and_moves_exactly_once(self):
         sid = self.session()
-        result = self.client.post(f'/api/sessions/{sid}/skip', json={'question_id':'q-1','reason':'暂时没有思路'})
+        result = self.client.post(f'/api/sessions/{sid}/skip', json={'question_id':'q-1','reason':'暂时没有思路', 'attempt': 1, 'operation_id': 'first-skip-op'})
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json()['active_question']['question_id'], 'q-2')
         self.assertEqual(result.json()['turn']['status'], 'unanswered')
         self.assertEqual(result.json()['turn']['answer'], '')
-        duplicate = self.client.post(f'/api/sessions/{sid}/skip', json={'question_id':'q-1'})
+        duplicate = self.client.post(f'/api/sessions/{sid}/skip', json={'question_id':'q-1', 'attempt': 1, 'operation_id': 'stale-skip-op'})
         self.assertEqual(duplicate.status_code, 409)
-        last = self.client.post(f'/api/sessions/{sid}/skip', json={'question_id':'q-2'})
+        last = self.client.post(f'/api/sessions/{sid}/skip', json={'question_id':'q-2', 'attempt': 1, 'operation_id': 'last-skip-op'})
         self.assertTrue(last.json()['finished'])
         self.assertEqual(len(store.get_session(sid)['turns']), 2)
 

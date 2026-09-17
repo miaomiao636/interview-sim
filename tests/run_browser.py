@@ -29,7 +29,7 @@ def main():
             if time.monotonic() >= deadline:
                 raise TimeoutError('Test server startup timed out')
             time.sleep(0.2)
-        return subprocess.run([sys.executable, str(root/'tests/browser_flow.py')], cwd=root, env=env, timeout=180).returncode
+        return subprocess.run([sys.executable, '-m', 'tests.browser_flow'], cwd=root, env=env, timeout=240).returncode
     finally:
         server.terminate()
         try:

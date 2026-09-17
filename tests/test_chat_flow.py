@@ -42,6 +42,7 @@ class ChatFlowTests(unittest.IsolatedAsyncioTestCase):
 
         request = ChatRequest(
             session_id=session["id"],
+            question_id='q-1', attempt=1, operation_id='chat-history-test',
             asr_text="我先确认容量和一致性要求。",
             history=[{"role": "user", "content": "我先确认容量和一致性要求。"}],
         )

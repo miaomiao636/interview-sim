@@ -2,32 +2,25 @@
 async function skipQuestion() {
   if (state.isBusy || state.isRecording || state.voice?.processing || !state.activeQuestionId) return;
   if (($('input-answer').value.trim() || $('voice-transcript').value.trim()) && !window.confirm('跳过将放弃当前未发送草稿，并将本题记为未回答，继续吗？')) return;
+  const context = {...sessionContext(), wasRetry: state.activeIsRetry};
+  const reason = $('skip-reason').value;
+  const operationId = operationFor('skip', reason);
   state.isBusy = true;
   setConversationBusy(true);
   stopSpeaking();
   try {
-    const result = await postJSON(`/api/sessions/${state.sessionId}/skip`, { question_id: state.activeQuestionId, reason: $('skip-reason').value });
-    addSystemMessage(`本题已标记为未回答${result.turn.skip_reason ? '：' + result.turn.skip_reason : ''}。报告会记录本题并提供训练建议。`);
-    $('input-answer').value = '';
-    $('voice-transcript').value = '';
-    $('subtitle-text').textContent = '等待录音…';
-    state.voice = null;
+    await postJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}/skip`, {question_id: context.questionId, attempt: context.attempt, operation_id: operationId, reason});
+    if (!isSessionContext(context)) return;
+    const session = await getJSON(`/api/sessions/${encodeURIComponent(context.sessionId)}`);
+    if (!isSessionContext(context)) return;
+    clearAnswerDrafts();
+    state.pendingOperation = null;
     $('skip-reason').value = '';
-    state.activeQuestionId = result.active_question?.question_id || null;
-    if (result.finished) {
-      state.lastQuestion = '';
-      addSystemMessage('本轮问题已结束，可以点击“结束并生成报告”。');
-    } else {
-      state.lastQuestion = result.active_question.question;
-      state.round += 1;
-      addChatMessage('interviewer', state.lastQuestion);
-      updateInterviewMeta();
-      renderBlueprint();
-      updateCurrentFocus(state.round - 1);
-      if ($('auto-speak').checked) speakText(state.lastQuestion);
-    }
-  } catch (error) { showToast(error.message, true); }
-  finally { state.isBusy = false; setConversationBusy(false); }
+    renderLiveSession(session, context.wasRetry);
+    addSystemMessage(`本题已标记为未回答${reason ? '：' + reason : ''}。`);
+    if (state.activeQuestionId && $('auto-speak').checked) speakText(state.lastQuestion);
+  } catch (error) { if (isSessionContext(context)) showToast(error.message, true); }
+  finally { if (isSessionContext(context)) { state.isBusy = false; setConversationBusy(false); } }
 }
 
 const CONNECTION_LABELS = { chat: '对话', analysis: '分析', asr: '语音识别', tts: '语音合成' };
