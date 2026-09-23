@@ -3,6 +3,7 @@ import asyncio
 import tempfile
 import unittest
 import uuid
+from tests.test_question_policy import envelope
 from pathlib import Path
 from unittest.mock import patch
 
@@ -43,15 +44,19 @@ class LiveAPIContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.get_session(self.sid), before)
 
     async def test_adaptive_turns_do_not_consume_next_blueprint_item(self):
+        replies = iter([
+            envelope('你刚才所说的需求访谈，能举一个具体例子吗？', 1, 'followup', 'personal_contribution'),
+            envelope('访谈产出的结论，你用了哪些方法核实？', 1, 'followup', 'validation'),
+        ])
         async def fake(*args, **kwargs):
-            yield '你刚才所说的需求访谈，能举一个具体例子吗？'
+            yield next(replies)
         with patch('backend.routers.chat.chat_stream', fake):
             for number in (1, 2):
                 response = await self.client.post('/api/chat', json=self.answer(f'q-{number}'))
                 self.assertEqual(response.status_code, 200, response.text)
                 active = store.get_session(self.sid)['active_question']
                 self.assertEqual(active['question_kind'], 'adaptive')
-                self.assertIsNone(active['blueprint_id'])
+                self.assertEqual(active['blueprint_id'], 1)
             response = await self.client.post(f'/api/sessions/{self.sid}/skip', json={
                 'question_id': 'q-3', 'attempt': 1, 'operation_id': str(uuid.uuid4()), 'reason': '暂时想不到例子',
             })
@@ -61,13 +66,14 @@ class LiveAPIContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(active['blueprint_id'], 2)
         self.assertEqual(active['question_id'], 'q-4')
         turns = store.get_session(self.sid)['turns']
-        self.assertEqual([turn['blueprint_id'] for turn in turns], [1, None, None])
+        self.assertEqual([turn['blueprint_id'] for turn in turns], [1, 1, 1])
+        self.assertEqual([turn.get('followup_focus') for turn in turns], [None, 'personal_contribution', 'validation'])
 
     async def test_completed_operation_replay_does_not_recall_model(self):
         calls = []
         async def fake(*args, **kwargs):
             calls.append(1)
-            yield '请具体说明你的个人工作。'
+            yield envelope('请具体说明你的个人工作。', 1, 'followup', 'personal_contribution')
         body = self.answer()
         with patch('backend.routers.chat.chat_stream', fake):
             first = await self.client.post('/api/chat', json=body)
@@ -95,7 +101,7 @@ class LiveAPIContractTests(unittest.IsolatedAsyncioTestCase):
         calls = []
         async def restored(*args, **kwargs):
             calls.append(1)
-            yield '具体承担了哪一部分工作？'
+            yield envelope('具体承担了哪一部分工作？', 1, 'followup', 'personal_contribution')
         body = {'operation_id': str(uuid.uuid4())}
         with patch('backend.routers.chat.chat_stream', restored):
             first = await self.client.post(f'/api/sessions/{self.sid}/next-question', json=body)

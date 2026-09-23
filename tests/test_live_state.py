@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import uuid
 import json
+from tests.test_question_policy import envelope
 from pathlib import Path
 from unittest.mock import patch
 
@@ -47,12 +48,16 @@ class LiveStateTests(unittest.IsolatedAsyncioTestCase):
         return chat.ChatRequest(**payload)
 
     async def test_two_adaptive_followups_do_not_consume_blueprint_before_skip(self):
+        replies = iter([
+            envelope('你刚才提到的行动，具体如何落实？', 1, 'followup', 'personal_contribution'),
+            envelope('你用什么证据验证了这次工作的成果？', 1, 'followup', 'evidence'),
+        ])
         async def model(*args, **kwargs):
-            yield '你刚才提到的行动，具体如何落实？'
+            yield next(replies)
         with patch.object(chat, 'chat_stream', model):
             await consume(await chat.chat(self.request()))
             second = store.get_session(self.sid)['active_question']
-            self.assertIsNone(second['blueprint_id'])
+            self.assertEqual(second['blueprint_id'], 1)
             self.assertEqual(second['question_kind'], 'adaptive')
             self.assertEqual(second['parent_question_id'], 'q-1')
             await consume(await chat.chat(self.request()))
@@ -62,7 +67,8 @@ class LiveStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(next_question['blueprint_id'], 2)
         self.assertEqual(next_question['question_id'], 'q-4')
         turns = store.get_session(self.sid)['turns']
-        self.assertEqual([t['blueprint_id'] for t in turns], [1, None, None])
+        self.assertEqual([t['blueprint_id'] for t in turns], [1, 1, 1])
+        self.assertEqual([t.get('followup_focus') for t in turns], [None, 'personal_contribution', 'evidence'])
 
     async def test_concurrent_duplicate_submission_records_and_calls_only_once(self):
         entered, release = asyncio.Event(), asyncio.Event()
@@ -71,7 +77,7 @@ class LiveStateTests(unittest.IsolatedAsyncioTestCase):
             calls.append(1)
             entered.set()
             await release.wait()
-            yield '请补充过程。'
+            yield envelope('请补充过程。', 1, 'followup', 'personal_contribution')
         request = self.request()
         with patch.object(chat, 'chat_stream', model):
             original = await chat.chat(request)
@@ -100,7 +106,7 @@ class LiveStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('credential', saved['next_question_job']['error'])
         self.assertEqual(len(saved['turns']), 1)
         async def succeed(*args, **kwargs):
-            yield '你如何完成它？'
+            yield envelope('你如何完成它？', 1, 'followup', 'personal_contribution')
         operation = str(uuid.uuid4())
         with patch.object(chat, 'chat_stream', succeed):
             response = await self.client.post(f'/api/sessions/{self.sid}/next-question', json={'operation_id': operation})
@@ -254,7 +260,7 @@ class LiveStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded['next_question_job']['status'], 'interrupted')
         self.assertEqual(len(loaded['turns']), 1)
         async def model(*args, **kwargs):
-            yield '请补充具体行动。'
+            yield envelope('请补充具体行动。', 1, 'followup', 'personal_contribution')
         with patch.object(chat, 'chat_stream', model):
             response = await self.client.post(f'/api/sessions/{self.sid}/next-question', json={'operation_id': 'recover-crash-op'})
         self.assertEqual(response.status_code, 200)

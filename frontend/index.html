@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>面试实验室 · AI 模拟面试</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/styles.css?v=voice-raw-20260922">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -233,8 +233,12 @@
               </div>
               <div id="voice-draft-group" class="hidden">
                 <label class="field-label" for="voice-transcript">转写草稿 · 结束录音后可修改</label>
-                <textarea id="voice-transcript" rows="4" maxlength="10000" placeholder="说话时文字会持续出现。结束录音后，检查文字再发送。"></textarea>
-                <div class="voice-confirm-actions"><button id="btn-retry-asr" class="btn secondary hidden" type="button">重试识别</button><button id="btn-send-voice" class="btn primary" type="button" disabled>确认发送回答</button></div>
+                <textarea id="voice-transcript" rows="4" maxlength="10000" aria-describedby="voice-transcript-help" placeholder="说话时文字会持续出现。结束录音后，检查文字再发送。"></textarea>
+                <p id="voice-transcript-help" class="field-help">直接显示语音识别结果，不自动改写。识别可能有误，结束录音后可自行纠正，再确认发送。</p>
+                <div class="voice-confirm-actions">
+                  <button id="btn-retry-asr" class="btn secondary hidden" type="button">重试识别</button>
+                  <button id="btn-send-voice" class="btn primary" type="button" disabled>确认发送回答</button>
+                </div>
               </div>
               <div class="skip-row">
                 <label class="sr-only" for="skip-reason">跳过原因（选填）</label><select id="skip-reason"><option value="">跳过原因（选填）</option><option value="暂时没有思路">暂时没有思路</option><option value="缺少相关经历">缺少相关经历</option><option value="想稍后专项练习">想稍后专项练习</option><option value="本次不想回答">本次不想回答</option></select>
@@ -338,12 +342,12 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/assets/audio.js"></script>
-  <script src="/assets/voice.js"></script>
-  <script src="/assets/workspace.js"></script>
-  <script src="/assets/jobs.js"></script>
-  <script src="/assets/preparation.js"></script>
-  <script src="/assets/reports.js"></script>
-  <script src="/assets/app.js"></script>
+  <script src="/assets/audio.js?v=voice-raw-20260922"></script>
+  <script src="/assets/voice.js?v=voice-raw-20260922"></script>
+  <script src="/assets/workspace.js?v=voice-raw-20260922"></script>
+  <script src="/assets/jobs.js?v=voice-raw-20260922"></script>
+  <script src="/assets/preparation.js?v=voice-raw-20260922"></script>
+  <script src="/assets/reports.js?v=voice-raw-20260922"></script>
+  <script src="/assets/app.js?v=voice-raw-20260922"></script>
 </body>
 </html>

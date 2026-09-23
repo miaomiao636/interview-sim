@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict
 
 from .. import config, prompts, store
+from .. import question_policy
+from ..voice_cleanup import VoiceInput
 from ..xiaomi_client import chat_stream
 
 router = APIRouter()
@@ -51,6 +53,7 @@ class ChatRequest(SkipRequest):
     session_id: str = Field(pattern=store.SESSION_ID_PATTERN)
     asr_text: str = Field(min_length=1, max_length=50000)
     history: list[dict] = Field(default_factory=list, max_length=100)
+    voice_input: VoiceInput | None = None
 
 
 def _empty_response(text=''):
@@ -104,7 +107,8 @@ async def chat(req: ChatRequest):
             recover_question_job(req.session_id)
             if not req.asr_text.strip():
                 raise HTTPException(422, '回答不能为空；不想回答可使用跳过。')
-            result = store.submit_answer(req.session_id, req.question_id, req.attempt, req.operation_id, req.asr_text)
+            result = store.submit_answer(req.session_id, req.question_id, req.attempt, req.operation_id, req.asr_text,
+                                         voice_input=req.voice_input.model_dump() if req.voice_input else None)
             if result is None:
                 raise HTTPException(404, '面试记录不存在。')
             if result['reused']:
@@ -185,6 +189,8 @@ def _messages(session):
         ),
     })
 
+    messages.append({'role': 'system', 'content': question_policy.selection_instruction(session)})
+
     return messages
 
 
@@ -225,14 +231,12 @@ def _start_question(session_id, operation_id, operation_table):
 
 async def _run_question(snapshot, job, queue, connection, model, close_stream):
     session_id = snapshot['id']
-    parts = []
-    size = 0
-    async def receive():
-        nonlocal size
+    async def receive(messages):
+        parts, size = [], 0
         with store.locked_session(session_id):
             if not _question_current(store.get_session(session_id) or {}, job):
                 return
-        async for token in chat_stream(_messages(snapshot), model=model, temperature=0.7, connection_snapshot=connection):
+        async for token in chat_stream(messages, model=model, temperature=0.7, connection_snapshot=connection):
             with store.locked_session(session_id):
                 if not _question_current(store.get_session(session_id) or {}, job):
                     return
@@ -242,22 +246,47 @@ async def _run_question(snapshot, job, queue, connection, model, close_stream):
             if size > MAX_QUESTION_CHARS or len(parts) >= MAX_STREAM_CHUNKS:
                 raise ValueError('question stream exceeded local bound')
             parts.append(token)
-            queue.put_nowait(token)
+        return ''.join(parts).strip()
+
+    async def choose():
+        messages = _messages(snapshot)
+        for attempt in range(2):
+            raw = await receive(messages)
+            if raw is None:
+                return None
+            if not raw:
+                # Empty/transport failures retain the explicit recovery behavior.
+                raise ValueError('empty next question')
+            try:
+                return question_policy.validate_candidate(raw, snapshot)
+            except ValueError as exc:
+                if attempt == 0:
+                    messages = [*messages, {'role': 'system', 'content':
+                        f'刚才的候选题已被本地校验拒绝（{exc}），未展示给用户。请重新选择一次；必须遵守上面的 JSON 协议与已问题约束。'}]
+        return question_policy.fallback_candidate(snapshot)
+
     try:
-        await asyncio.wait_for(receive(), timeout=100)
-        text = ''.join(parts).strip()
+        # Both generation and its one optional reselection share a total budget.
+        candidate = await asyncio.wait_for(choose(), timeout=100)
         with store.locked_session(session_id):
             session = store.get_session(session_id)
             if not session or not _question_current(session, job):
                 return
-            if not text:
-                raise ValueError('empty next question')
-            store._activate(session, job['question_id'], text, None, question_kind='adaptive', parent_question_id=job['parent_question_id'])
-            session = store.get_session(session_id)
+            if candidate is None:
+                session['status'] = 'interview_finished'
+                text = ''
+            else:
+                text = candidate['question']
+                store._activate(session, job['question_id'], **candidate, parent_question_id=job['parent_question_id'])
+                session = store.get_session(session_id)
             session['next_question_job'].update(status='completed', error='')
             operation = session[job['operation_table']][job['operation_id']]
             operation['result']['response_text'] = text
+            operation['result']['finished'] = candidate is None
             store._save(session)
+            # Never expose raw provider tokens or rejected repeated questions.
+            if text:
+                queue.put_nowait(text)
     except (Exception, asyncio.CancelledError) as exc:
         with store.locked_session(session_id):
             session = store.get_session(session_id)

@@ -40,7 +40,7 @@ jobs:
       - name: Frontend syntax and runtime tests
         run: |
           for file in frontend/*.js; do node --check "$file"; done
-          node --test tests/test_audio_runtime.cjs tests/test_voice_runtime.cjs tests/test_report_runtime.cjs
+          node --test tests/test_*_runtime.cjs
       - name: Build distribution
         run: python -m pip wheel --no-deps --no-build-isolation . --wheel-dir dist
       - name: Browser acceptance with synthetic data

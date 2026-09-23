@@ -40,7 +40,7 @@ node bin/archify.mjs visual-check <HTML路径> --json
 | 准备档案 | backend/preparation_store.py | 不可变正文、修订链、建议采纳及用户确认事实 |
 | 音频 | frontend/voice.js、recorder-worklet.js、audio.js | 手动录音、分段转写、PCM 缓冲播放 |
 | 文件提取 | backend/document_parser.py、ocr_image.swift | 文本 / DOCX / PDF、本地 OCR |
-| 题纲与对话 | backend/routers/plan.py、chat.py、prompts.py | 基于材料建题纲，结合回答追问 |
+| 题纲与对话 | backend/routers/plan.py、chat.py、prompts.py、question_policy.py | 基于材料建题纲，统一覆盖记录、带焦点追问、重复候选校验 |
 | 报告 | backend/routers/review.py、report_pipeline.py、report_models.py、structured.py | 分阶段分析、逐题引用校验、四维服务端聚合、首答/重答缓存和历史报告 |
 | 记录与配置 | backend/store.py、config.py、routers/presets.py | 本地 JSON、岗位预设、分能力连接 |
 | 模型适配 | backend/xiaomi_client.py | 对话、分析、ASR、TTS 的远程请求 |
@@ -48,7 +48,7 @@ node bin/archify.mjs visual-check <HTML路径> --json
 ## 三条数据路径
 
 1. **导入**：浏览器上传 → 本机解析 / OCR → 页面核对 → 岗位或会话保存。原始文件不长期存储。
-2. **面试**：服务端保存当前回答 → 对话 API 出题 → 保存新问题 → 网页显示，可调用 TTS 朗读。语音作答先调用 ASR，再由用户确认发送。
+2. **面试**：服务端保存当前回答 → 对话 API 提议结构化问题 → 本地检查覆盖/重复/追问上限 → 保存有效问题 → 网页显示，可调用 TTS 朗读。语音作答先调用 ASR，保留返回文字，由用户确认发送，不增加口语润色步骤。出题缓冲完整候选后才展示，不向页面发送原始 JSON 或被拒绝问题。
 3. **结束**：仅结束直接保存本地状态；选择报告才进入分析 API → 分阶段校验与缓存 → 汇总报告 → 本机保存和导出。
 
 新增的显式闭环：岗位/简历版本 → 可选准备任务 → 实战会话快照 → 首次与重答分开复盘 → 用户选择提取原答 → 待确认素材 → 确认/修订/拒绝 → 下次准备。任何一步都不自动把示范提纲当成真实简历；跳过准备也能进入实战。
@@ -56,7 +56,9 @@ node bin/archify.mjs visual-check <HTML路径> --json
 ## 状态与一致性
 
 - 会话是原题原答的事实源。提交/跳题使用 `question_id + attempt + operation_id`；相同操作同内容重放不重复写入，不同内容返回409，旧页面不能把答案挂到新题。
-- 动态追问标为 adaptive 并记录父题；不把第几题当成蓝图 ID。跳题仅按真实已问蓝图项推进。
+- 动态追问标为 adaptive 并记录父题、原考察点 blueprint_id 与 followup_focus；不把第几题当成题纲 ID。出题与跳题共用覆盖记录，每轮最多连续追问两次；旧 adaptive 的空 ID 仅通过强文本匹配保守推断，不修改源记录。
+- 保真整理功能已撤回；`backend/voice_cleanup.py` 仅保留历史 `voice_input` 数据契约及旧页面的410停用提示，不包含模型处理或草稿缓存。原始语音草稿只在页面保存，明确发送后才写入会话。
+- 页面与前端资源使用缓存重验证，静态资源带统一版本标识，避免本地升级时新界面混用旧脚本。
 - 出题、报告和专家任务使用输入指纹、代次和运行标识隔离迟到结果；每次远程调用前及落盘时检查当前状态。服务关闭先使运行任务失效再取消，重启仅标中断，不自动计费重跑。
 - 任务状态、版本和会话均以 JSON 原子替换保存，单进程线程锁保护写入。涉及面试素材的双存储操作固定会话锁→准备锁顺序；不支持多个进程同时写同一数据目录。
 - 新报告按单次作答指纹复用已验证反馈，即使汇总失败再重答也不覆盖首次评分。整体汇总与局部缓存各自校验；旧五维报告不转成新版分数。
@@ -103,3 +105,5 @@ node bin/archify.mjs visual-check <HTML路径> --json
 | /api/health | GET | 本地服务和配置状态 |
 
 新接口示例与完整字段可在本地服务的 `/docs` 查看。公开字段不含密钥，但会话与准备档案包含个人资料，不应公开代理这些接口。兼容同步报告 `/api/review` 保留新 schema 字段；读取旧会话不会隐式重新评分。
+
+旧 `/api/sessions/{id}/voice-cleanup` 仅返回410与刷新提示，不再调用模型，也不列入新 API 文档。

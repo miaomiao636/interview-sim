@@ -8,13 +8,14 @@ from playwright.async_api import async_playwright, expect
 from tests.preparation_browser_flow import run_preparation_flow
 from tests.live_browser_flow import run_live_flow
 from tests.report_browser_flow import run_report_flow
+from tests.raw_voice_browser_flow import run_raw_voice_flow
 
 
 async def wait_for_rendered_report(page, answer_count):
     # Only the completed v2 renderer creates these nodes; neither the initial
     # placeholder nor an in-progress stage labelled "逐题证据" qualifies.
     await expect(page.locator('#view-report')).to_be_visible(timeout=30000)
-    await expect(page.locator('#report-content .report-version-note')).to_contain_text('interview-evidence-v1', timeout=30000)
+    await expect(page.locator('#report-content .report-version-note')).to_contain_text('interview-evidence-v2', timeout=30000)
     await expect(page.locator('#report-content .feedback-card')).to_have_count(answer_count, timeout=30000)
     for button in ('btn-export-md', 'btn-export-json', 'btn-print'):
         await expect(page.locator('#' + button)).to_be_enabled()
@@ -92,7 +93,7 @@ async def main():
         saved = await (await page.request.get(base_url+'/api/sessions/'+saved_id)).json()
         assert saved['status'] == 'ended' and saved['review'] is None
         assert 'report_job' not in saved and len(saved['turns']) == 4
-        assert [turn['blueprint_id'] for turn in saved['turns']] == [1, None, 2, 3]
+        assert [turn['blueprint_id'] for turn in saved['turns']] == [1, 1, 2, 3]
         await page.reload()
         await page.locator('[data-view=history]').click()
         await page.locator(f'[data-session-id="{saved_id}"]').click()
@@ -157,6 +158,12 @@ async def main():
             await run_report_flow(report_page, base_url, output)
         finally:
             await report_page.close()
+        voice_page = await browser.new_page(viewport={'width': 1440, 'height': 1080})
+        voice_page.on('pageerror', lambda error: errors.append(str(error)))
+        try:
+            await run_raw_voice_flow(voice_page, base_url, output)
+        finally:
+            await voice_page.close()
         assert not errors, errors
         print(json.dumps({'browser_flow':'passed','screenshots':str(output),'console_errors':errors}, ensure_ascii=False))
         await browser.close()

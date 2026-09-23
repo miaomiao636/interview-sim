@@ -63,3 +63,41 @@ test('legacy reports retain their original total and do not masquerade as new sc
   assert.match(markdown, /总分：47\/100/);
   assert.doesNotMatch(markdown, /首次面试表现|最新重答表现/);
 });
+
+test('export distinguishes excluded system repetitions and keeps voice provenance', () => {
+  const {context} = runtime();
+  const data = sample();
+  data.interview_performance.first_attempt.excluded_duplicate_count = 1;
+  data.question_feedback = [
+    {question_id: 'q-2', attempt: 1, question: '重复题', status: 'unanswered', scoring_excluded: true, score: null, exclusion_reason: '与 q-1 重复'},
+    {question_id: 'q-1', attempt: 1, question: '原题', answer: '我负责接口。', score: 6, voice_input: {raw_transcript: '我，我负责接口。', cleaned_transcript: '我负责接口。', cleanup_status: 'cleaned'}},
+  ];
+  const markdown = context.markdown(data);
+  assert.match(markdown, /系统重复题.*未纳入评分/);
+  assert.match(markdown, /原始转写：我，我负责接口。/);
+  assert.match(markdown, /整理稿：我负责接口。/);
+  assert.doesNotMatch(markdown.split('### q-2')[1].split('### q-1')[0], /得分：0|未回答，计0分/);
+});
+
+test('system duplicate report cards explain exclusion without zero score or retry advice', () => {
+  const {context} = runtime();
+  context.feedbackSample = [{question_id: 'q-duplicate', question: '<重复题>', scoring_excluded: true,
+    exclusion_reason: '与前题重复 <script>unsafe</script>', status: 'unanswered', score: 0}];
+  const html = vm.runInContext('renderQuestionFeedback(feedbackSample)', context);
+  assert.match(html, /系统重复题，未纳入评分/);
+  assert.match(html, /&lt;重复题&gt;/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.doesNotMatch(html, /turn-score|重答这题|下一次只改|本题 0 分|<script>/);
+});
+
+test('historical voice evidence stays escaped and collapsed after cleanup retirement', () => {
+  const {context} = runtime();
+  context.feedbackSample = [{question_id: 'q-voice', question: '原题', answer: '最终确认文本', score: 6,
+    voice_input: {raw_transcript: '<原始>我我参与', cleaned_transcript: '我参与<script>', cleanup_status: 'cleaned'}}];
+  const html = vm.runInContext('renderQuestionFeedback(feedbackSample)', context);
+  assert.match(html, /<details class="voice-original-details">/);
+  assert.match(html, /&lt;原始&gt;我我参与/);
+  assert.match(html, /我参与&lt;script&gt;/);
+  assert.match(html, /评分仅评确认文本/);
+  assert.doesNotMatch(html, /<details[^>]*\bopen\b|<script>/);
+});

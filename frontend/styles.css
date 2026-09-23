@@ -120,6 +120,14 @@
 .connection-title .check-row { font-size: 13px; }
 #voice-transcript { width: 100%; margin: 10px 0; min-height: 120px; }
 .voice-confirm-actions { margin-top: 8px; }
+.voice-confirm-actions { flex-wrap: wrap; }
+.voice-evidence-help { color: var(--ink-soft); font-size: 12px; line-height: 1.7; margin: 10px 0; }
+.voice-original-details { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); }
+.voice-original-details summary { cursor: pointer; font-size: 12px; font-weight: 650; color: var(--ink-soft); }
+.voice-original-details h3 { font-size: 12px; margin: 8px 0; }
+.voice-version-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.voice-version-grid section { min-width: 0; }
+.voice-version-text { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; margin: 8px 0; }
 .skip-row { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; flex-wrap: wrap; }
 .skip-row select { width: auto; min-width: 180px; }
 .skip-row small, .preset-card small { color: var(--ink-soft); }

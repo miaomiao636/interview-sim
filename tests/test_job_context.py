@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from tests.test_question_policy import envelope
 from pathlib import Path
 from unittest.mock import patch
 from fastapi.testclient import TestClient
@@ -25,7 +26,7 @@ class JobContextTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('示例公司', plan_messages[1]['content'])
             async def fake_chat(messages, **kwargs):
                 chat_messages.extend(messages)
-                yield '你刚才提到的访谈，怎样帮助内容创作者？'
+                yield envelope('你刚才提到的访谈，怎样帮助内容创作者？', 1, 'followup', 'evidence')
             with patch('backend.routers.chat.chat_stream', fake_chat):
                 response = await chat(ChatRequest(session_id=result.session_id,asr_text='我访谈过三位创作者。', question_id=result.active_question['question_id'], attempt=result.active_question['attempt'], operation_id='job-context-answer'))
                 text = ''.join([part async for part in response.body_iterator])

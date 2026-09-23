@@ -143,7 +143,7 @@ function renderEvidenceReport(data) {
   const resume = data.resume_quality || {}, assessment = resume.status === 'assessed' ? resume.assessment : null;
   const comparison = performance.comparison || {}, coverage = data.requirement_coverage || {};
   $('report-content').innerHTML = `
-    <section class="surface report-version-note"><strong>独立评分 · ${esc(data.rubric_version || 'interview-evidence-v1')}</strong><p>首次表现、学习后的重答和简历质量分别展示，不混合为“能力总分”。仅用于练习，不代表录取概率。</p></section>
+    <section class="surface report-version-note"><strong>独立评分 · ${esc(data.rubric_version || 'interview-evidence-v1')}</strong><p>首次表现、学习后的重答和简历质量分别展示，不混合为“能力总分”。仅用于练习，不代表录取概率。</p><p>${esc(performance.note || '')}</p></section>
     <div class="report-score-grid">
       <section class="surface report-score-card"><p class="eyebrow">RESUME SNAPSHOT</p><h2>简历质量</h2><strong id="report-resume-total" class="report-total">${reportValue(assessment?.total)}</strong><p>${esc(assessment ? '仅评价本场所选简历的准备诊断快照，不从面试反推。' : resume.reason || '本场版本没有有效的准备诊断。')}</p><small>简历版本：${esc(resume.resume_version_id || '未关联')}</small>${assessment ? `<details><summary>查看简历诊断维度</summary><ul>${Object.entries(RESUME_DIMENSIONS).map(([key,label]) => `<li>${label}：${reportValue(assessment.dimensions?.[key]?.score,10)}<p>${esc(assessment.dimensions?.[key]?.comment || '')}</p></li>`).join('')}</ul>${renderTips(assessment.limitations || [])}</details>` : ''}</section>
       <section class="surface report-score-card primary-score"><p class="eyebrow">FIRST ATTEMPT</p><h2>首次面试表现</h2><strong id="report-first-total" class="report-total">${reportValue(first.total)}</strong><p>${Number(first.question_count) || 0} 题 · 已回答 ${Number(first.answered_count) || 0} · 未回答 ${Number(first.unanswered_count) || 0}</p>${renderAggregateDimensions(first)}<small>${esc(first.scope_note || '每个题号只取首次实际作答，重答不会改变首次分数。')}</small></section>
@@ -177,7 +177,14 @@ function renderEvidenceReportMarkdown(data) {
   if (coverage.status !== 'available') lines.push('本场没有有效的岗位要求分析快照，未评估。');
   (coverage.requirements || []).forEach(item => lines.push(`### ${item.requirement}`, `JD 原文：${item.source_quote || ''}`, `材料状态：${({supported:'已有材料证据',needs_verification:'需要验证',missing:'缺少材料'})[item.status] || '未评估'}`, ...(item.evidence || []).map(e => `材料证据（${e.source_id}）：${e.quote}`), `面试观察：${item.interview_status === 'observed' ? '有已验证的原答证据' : '未观察到，不作能力否定'}`, ...(item.interview_evidence || []).map(e => `原答证据（${e.question_id} / 第 ${e.attempt} 次）：${e.quote}`), item.note || ''));
   lines.push('', '## 逐题证据');
-  (data.question_feedback || []).forEach(item => lines.push('', `### ${item.question_id} · 第 ${item.attempt || 1} 次作答 · ${reportValue(item.score,10)}`, `问题：${item.question || ''}`, `回答：${item.status === 'unanswered' ? '未回答（0 分）' : item.answer || ''}`, `原因说明：${item.reason_analysis || item.skip_reason || '未说明，不推测心理原因'}`, ...Object.entries(REPORT_DIMENSIONS).map(([key,label]) => `- ${label}：${reportValue(item.dimensions?.[key]?.score,10)}；${item.dimensions?.[key]?.comment || ''}`), `证据：${(item.evidence_quotes || []).join('；') || '无可验证引用'}`, `已覆盖：${(item.covered_points || []).join('；') || '无'}`, `仍缺少：${(item.missed_points || []).join('；') || '无'}`, `问题讲解：${item.question_explanation || ''}`, `下一次改进：${item.coaching_tip || ''}`, `作答提纲：${reportText(item.improved_answer_outline)}`));
+  (data.question_feedback || []).forEach(item => {
+    if (item.scoring_excluded) {
+      lines.push('', `### ${item.question_id} · 系统重复题，未纳入评分`, `问题：${item.question || ''}`, item.exclusion_reason || '原始记录保留，不重复扣分。');
+      return;
+    }
+    lines.push('', `### ${item.question_id} · 第 ${item.attempt || 1} 次作答 · ${reportValue(item.score,10)}`, `问题：${item.question || ''}`, `回答：${item.status === 'unanswered' ? '未回答（0 分）' : item.answer || ''}`, `原因说明：${item.reason_analysis || item.skip_reason || '未说明，不推测心理原因'}`, ...Object.entries(REPORT_DIMENSIONS).map(([key,label]) => `- ${label}：${reportValue(item.dimensions?.[key]?.score,10)}；${item.dimensions?.[key]?.comment || ''}`), `证据：${(item.evidence_quotes || []).join('；') || '无可验证引用'}`, `已覆盖：${(item.covered_points || []).join('；') || '无'}`, `仍缺少：${(item.missed_points || []).join('；') || '无'}`, `问题讲解：${item.question_explanation || ''}`, `下一次改进：${item.coaching_tip || ''}`, `作答提纲：${reportText(item.improved_answer_outline)}`);
+    if (item.voice_input) lines.push(`原始转写：${item.voice_input.raw_transcript || ''}`, `整理稿：${item.voice_input.cleaned_transcript || '未使用'}`, 'ASR文字并非录音真值；不据此评估真实口吃、语速或现场流畅度。');
+  });
   lines.push('', '## 下一轮训练', ...(data.practice_plan || []).map(item => `- ${item.question_id}：${item.focus}；${item.reason}`), '', '## 面试提升建议', ...(data.interview_tips || []).map(item => `- ${item}`), '', `报告：${data.report_id || ''}`, `输入指纹：${data.input_fingerprint || ''}`, `生成时间：${data.generated_at || ''}`);
   return lines.join('\n');
 }

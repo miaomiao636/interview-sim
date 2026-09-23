@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from tests.test_question_policy import envelope
 from pathlib import Path
 from unittest.mock import patch
 
@@ -38,7 +39,7 @@ class ChatFlowTests(unittest.IsolatedAsyncioTestCase):
 
         async def fake_stream(messages, **_kwargs):
             captured_messages.extend(messages)
-            yield "如果流量增长十倍，你会怎么调整？"
+            yield envelope("如果流量增长十倍，你会怎么调整？", 1, 'followup', 'constraints')
 
         request = ChatRequest(
             session_id=session["id"],

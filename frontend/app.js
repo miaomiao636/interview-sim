@@ -57,15 +57,21 @@ function invalidateSessionContext(sessionId = state.sessionId) {
   state.activeIsRetry = false;
   stopTimer();
   stopSpeaking();
+  state.voice = null;
   return sessionContext();
 }
 function sessionContext() { return {sessionId: state.sessionId, epoch: state.sessionEpoch, questionId: state.activeQuestionId, attempt: state.activeAttempt}; }
 function isSessionContext(context) { return context.sessionId === state.sessionId && context.epoch === state.sessionEpoch; }
 function applyActiveQuestion(active) {
+  const previousId = state.activeQuestionId;
+  const previousAttempt = state.activeAttempt;
   state.activeQuestionId = active?.question_id || null;
   state.activeAttempt = active?.attempt || 1;
   state.activeIsRetry = Boolean(active?.is_retry);
   state.lastQuestion = active?.question || '';
+  if (previousId !== state.activeQuestionId || previousAttempt !== state.activeAttempt) {
+    state.voice = null;
+  }
 }
 function operationFor(kind, payload) {
   const fingerprint = JSON.stringify({kind, session: state.sessionId, question: state.activeQuestionId, attempt: state.activeAttempt, payload});
@@ -166,8 +172,15 @@ function bindInterview() {
     if (state.voice?.failed && !window.confirm('仍有片段未成功识别。确认以当前文字发送，并放弃剩余音频吗？')) return;
     await submitAnswer(answer);
   });
-  $("btn-retry-asr").addEventListener("click", () => state.voice?.retry());
+  $("btn-retry-asr").addEventListener("click", async () => {
+    if (state.isBusy || state.isRecording || state.voice?.processing || state.voice?.stopping) return;
+    if (state.voice && $('voice-transcript').value.trim() !== state.voice.text.trim()
+        && !window.confirm('重试识别将重新生成语音草稿，替换当前编辑文字，继续吗？')) return;
+    await state.voice?.retry();
+  });
   $("voice-transcript").addEventListener("input", syncVoiceUI);
+  // Retire only this obsolete preference; all other local settings stay intact.
+  try { localStorage.removeItem('interview-sim-auto-voice-cleanup'); } catch (_) { /* Storage may be unavailable. */ }
   $("btn-skip").addEventListener("click", skipQuestion);
   $("btn-recover-question").addEventListener("click", recoverNextQuestion);
   $("btn-end").addEventListener("click", endInterview);
@@ -581,6 +594,12 @@ function renderQuestionFeedback(items, versioned = false) {
   if (!items.length) return emptyInline("当前历史报告没有逐题证据。完成一次新面试即可生成。 ");
   const previousScores = new Map();
   return items.map((item) => {
+    if (item.scoring_excluded) return `<article class="feedback-card feedback-excluded">
+      <span class="question-code">${esc(item.question_id || 'QUESTION')}</span>
+      <h3 class="feedback-question">${esc(item.question || '未记录问题')}</h3>
+      <p><strong>系统重复题，未纳入评分</strong></p>
+      <p>${esc(item.exclusion_reason || '系统重复提出已覆盖的问题，此题不重复计分。')}</p>
+    </article>`;
     const score = Number(item.score) || 0;
     const previous = previousScores.get(item.question_id);
     previousScores.set(item.question_id, score);
@@ -595,6 +614,7 @@ function renderQuestionFeedback(items, versioned = false) {
       </div>
       <h3 class="feedback-question">${esc(item.question || "未记录问题")}</h3>
       <blockquote class="answer-quote">${esc(item.status === 'unanswered' ? '未回答 · 本题 0 分' : item.answer || "未记录回答")}</blockquote>
+      ${renderVoiceEvidence(item.voice_input)}
       ${item.status === 'unanswered' ? `<p class="skip-note">${esc(item.reason_analysis || '未说明跳过原因，不推断心理或能力问题。')}</p>` : ''}
       <div class="evidence-grid">
         <div class="evidence-box covered"><strong>已覆盖</strong>${renderTags(item.covered_points)}</div>
@@ -608,6 +628,18 @@ function renderQuestionFeedback(items, versioned = false) {
       </div>
     </article>`;
   }).join("");
+}
+
+function renderVoiceEvidence(voiceInput) {
+  if (!voiceInput?.raw_transcript) return '';
+  return `<details class="voice-original-details">
+    <summary>查看历史转写记录</summary>
+    <p class="voice-evidence-help">ASR 识别文字非录音真值；评分仅评确认文本，不评真实口吃或语速。</p>
+    <div class="voice-version-grid">
+      <section><h3>原始 ASR 转写</h3><p class="voice-version-text" tabindex="0">${esc(voiceInput.raw_transcript)}</p></section>
+      <section><h3>历史整理版（最终发送前可能经过手动修改）</h3><p class="voice-version-text" tabindex="0">${esc(voiceInput.cleaned_transcript ?? '未使用整理版')}</p></section>
+    </div>
+  </details>`;
 }
 
 function renderTags(values) {
@@ -761,12 +793,16 @@ async function startRecording() {
   stopSpeaking();
   const voice = new InterviewVoice({
     onText(text) {
+      if (state.voice !== voice) return;
       $("subtitle-text").textContent = text || "正在聆听，文字将在识别后出现…";
       $("voice-transcript").value = text;
       syncVoiceUI();
     },
-    onStatus(text) { $("record-status").textContent = text; },
-    onState: syncVoiceUI,
+    onStatus(text) { if (state.voice === voice) $("record-status").textContent = text; },
+    onState() {
+      if (state.voice !== voice) return;
+      syncVoiceUI();
+    },
   });
   state.voice = voice;
   $("btn-record").disabled = true;

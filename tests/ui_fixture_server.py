@@ -35,7 +35,8 @@ async def fake_chat(*args, **kwargs):
     if '测试触发下一题失败' in answer and answer not in _failed_chat_inputs:
         _failed_chat_inputs.add(answer)
         raise RuntimeError('合成下一题连接失败')
-    for text in ['请介绍', '你如何验证项目结果？']:
+    candidate = {'kind': 'followup', 'blueprint_id': 1, 'followup_focus': 'personal_contribution', 'question': '你刚才提到的工作中，你个人具体负责哪一部分？'}
+    for text in [json.dumps(candidate, ensure_ascii=False)]:
         await asyncio.sleep(0.1)
         yield text
 
@@ -89,7 +90,7 @@ async def fake_preparation(**kwargs):
     return json.dumps(data, ensure_ascii=False)
 
 async def fake_asr(*args, **kwargs):
-    for text in ['这是', '测试转写。']:
+    for text in ['我，我，嗯，', '也也参与接口对接。']:
         await asyncio.sleep(0.1)
         yield text
 

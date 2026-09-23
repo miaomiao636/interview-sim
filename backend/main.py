@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import config
+from . import voice_cleanup
 from .routers import chat, documents, plan, presets, preparation, review, settings
 
 @asynccontextmanager
@@ -35,6 +36,16 @@ app.include_router(documents.router)
 app.include_router(settings.router)
 app.include_router(presets.router)
 app.include_router(preparation.router)
+app.include_router(voice_cleanup.router)
+
+
+@app.middleware('http')
+async def revalidate_workbench(request, call_next):
+    response = await call_next(request)
+    if request.url.path == '/' or request.url.path.startswith('/assets/'):
+        # Local upgrades must not combine new markup with a cached old runtime.
+        response.headers['Cache-Control'] = 'no-cache'
+    return response
 
 # 前端静态文件目录
 frontend_dir = Path(__file__).parent.parent / "frontend"

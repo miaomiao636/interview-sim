@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import config
+from .question_policy import next_uncovered_question
 
 SESSION_ID_PATTERN = r"^[0-9a-f]{8}$"
 TERMINAL_STATES = {"ended", "completed", "reviewing", "review_failed", "interview_finished"}
@@ -181,7 +182,7 @@ def set_active_question(
                      question_kind=question_kind, parent_question_id=parent_question_id)
 
 
-def _activate(session, question_id, question, blueprint_id=None, *, attempt=1, is_retry=False, question_kind='', parent_question_id=None):
+def _activate(session, question_id, question, blueprint_id=None, *, attempt=1, is_retry=False, question_kind='', parent_question_id=None, followup_focus=None):
     """Locked transition; explicit retry validates its terminal source first."""
 
     active_question = {
@@ -192,6 +193,7 @@ def _activate(session, question_id, question, blueprint_id=None, *, attempt=1, i
         "is_retry": is_retry,
         "question_kind": question_kind or ('retry' if is_retry else 'blueprint' if blueprint_id is not None else 'adaptive'),
         "parent_question_id": parent_question_id,
+        "followup_focus": followup_focus,
         "asked_at": datetime.now().isoformat(),
     }
     session["active_question"] = active_question
@@ -208,6 +210,7 @@ def _activate(session, question_id, question, blueprint_id=None, *, attempt=1, i
         "blueprint_id": blueprint_id,
         "question_kind": active_question['question_kind'],
         "parent_question_id": parent_question_id,
+        "followup_focus": followup_focus,
         "time": active_question["asked_at"],
     })
     session["status"] = "interviewing"
@@ -216,7 +219,7 @@ def _activate(session, question_id, question, blueprint_id=None, *, attempt=1, i
 
 
 @_session_locked
-def record_answer(session_id: str, answer: str, *, skipped: bool = False, reason: str = "") -> Optional[dict]:
+def record_answer(session_id: str, answer: str, *, skipped: bool = False, reason: str = "", voice_input=None) -> Optional[dict]:
     """Attach one candidate answer to the question currently visible to them."""
     session = get_session(session_id)
     if session is None:
@@ -238,9 +241,12 @@ def record_answer(session_id: str, answer: str, *, skipped: bool = False, reason
         "is_retry": bool(active.get("is_retry", False)),
         "question_kind": active.get('question_kind', 'retry' if active.get('is_retry') else 'blueprint' if active.get('blueprint_id') is not None else 'adaptive'),
         "parent_question_id": active.get('parent_question_id'),
+        "followup_focus": active.get('followup_focus'),
         "asked_at": active.get("asked_at"),
         "answered_at": answered_at,
     }
+    if voice_input is not None and not skipped:
+        turn['voice_input'] = copy.deepcopy(voice_input)
     session.setdefault("turns", []).append(turn)
     session.setdefault("transcript", []).append({
         "role": "candidate",
@@ -259,11 +265,14 @@ def record_answer(session_id: str, answer: str, *, skipped: bool = False, reason
 
 
 @_session_locked
-def submit_answer(session_id, question_id, attempt, operation_id, answer, *, skipped=False, reason=''):
+def submit_answer(session_id, question_id, attempt, operation_id, answer, *, skipped=False, reason='', voice_input=None):
     session = get_session(session_id)
     if session is None:
         return None
     intent = {'kind': 'skip' if skipped else 'answer', 'question_id': question_id, 'attempt': attempt, 'answer': answer.strip(), 'reason': reason if skipped else ''}
+    # Omit absent metadata to preserve idempotent replays from old clients.
+    if voice_input is not None and not skipped:
+        intent['voice_input'] = copy.deepcopy(voice_input)
     operations = session.setdefault('answer_operations', {})
     if operation_id in session.get('recovery_operations', {}):
         raise SessionConflict('该操作编号已用于恢复下一题，请使用新的提交编号。')
@@ -276,7 +285,7 @@ def submit_answer(session_id, question_id, attempt, operation_id, answer, *, ski
     if (not active or active['question_id'] != question_id or active.get('attempt', 1) != attempt
             or session.get('status') in TERMINAL_STATES or (session.get('report_job') or {}).get('status') == 'running'):
         raise SessionConflict('当前题目或作答轮次已变化，请重新载入面试记录。')
-    result = skip_question(session_id, question_id, reason, attempt=attempt) if skipped else {'turn': record_answer(session_id, answer), 'active_question': None, 'finished': bool(active.get('is_retry'))}
+    result = skip_question(session_id, question_id, reason, attempt=attempt) if skipped else {'turn': record_answer(session_id, answer, voice_input=voice_input), 'active_question': None, 'finished': bool(active.get('is_retry'))}
     session = get_session(session_id)
     session.setdefault('answer_operations', {})[operation_id] = {'intent': intent, 'result': result}
     _save(session)
@@ -293,10 +302,8 @@ def skip_question(session_id: str, question_id: str, reason: str = "", *, attemp
     if turn is None:
         return None
     session = get_session(session_id)
-    blueprint = session.get("blueprint") or []
     cursor = session.get("question_cursor", 0)
-    asked = {str(t.get('blueprint_id')) for t in session.get('turns', []) if t.get('blueprint_id') is not None}
-    item = next((q for q in blueprint if q.get('id') is not None and str(q['id']) not in asked), None)
+    item = next_uncovered_question(session)
     if item and not active.get("is_retry"):
         next_question = set_active_question(session_id, f"q-{cursor + 1}", item["question"], item.get("id"))
     else:

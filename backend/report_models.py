@@ -7,8 +7,8 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from .structured import StructuredOutputError
 
-RUBRIC_VERSION = 'interview-evidence-v1'
-PROMPT_VERSION = 'interview-feedback-v1'
+RUBRIC_VERSION = 'interview-evidence-v2'
+PROMPT_VERSION = 'interview-feedback-v2'
 DIMENSIONS = ('relevance', 'evidence', 'professional_content', 'expression')
 Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=600)]
 Quote = Annotated[str, StringConstraints(min_length=1, max_length=1000)]
@@ -62,7 +62,7 @@ class ReportSummary(StrictModel):
 
 class ReportV2(StrictModel):
     schema_version: Literal[2]
-    rubric_version: Literal['interview-evidence-v1']
+    rubric_version: Literal['interview-evidence-v2']
     report_id: str
     input_fingerprint: str
     generated_at: str
@@ -117,6 +117,40 @@ def enrich_feedback(raw, turn, signature):
     value['question_kind'] = turn.get('question_kind', 'retry' if turn.get('is_retry') else 'blueprint' if turn.get('blueprint_id') is not None else 'adaptive')
     value.update(score=round(sum(d['score'] for d in value['dimensions'].values()) / 4, 2),
                  max_score=10, turn_fingerprint=signature)
+    if turn.get('voice_input'):
+        value['voice_input'] = copy.deepcopy(turn['voice_input'])
+    return value
+
+
+def duplicate_skips(turns):
+    """Only exclude the diagnosed legacy adaptive -> blueprint replay pattern.
+
+    Keep source records and explicit retries intact. Ambiguous semantics are not
+    retroactively classified, and two independent answered questions still count.
+    """
+    from .question_policy import questions_repeat
+    excluded, seen = {}, []
+    for turn in turns:
+        if turn.get('is_retry') or turn.get('attempt', 1) != 1:
+            continue
+        if turn.get('status') == 'unanswered' and turn.get('question_kind') == 'blueprint':
+            prior = next((item for item in seen if item.get('question_kind') == 'adaptive'
+                          and item.get('blueprint_id') is None
+                          and questions_repeat(turn.get('question', ''), item.get('question', ''))), None)
+            if prior:
+                excluded[identity(turn)] = prior['question_id']
+        seen.append(turn)
+    return excluded
+
+
+def excluded_feedback(turn, duplicate_of, signature):
+    note = f'旧版动态题与题纲题重复（对应 {duplicate_of}），本次跳过不重复扣分。'
+    raw = {'question_id': turn['question_id'], 'attempt': turn.get('attempt', 1),
+           'dimensions': {key: {'score': 0, 'comment': '系统重复题，不纳入评分'} for key in DIMENSIONS},
+           'confidence': 'high', 'evidence_quotes': [], 'covered_points': [], 'missed_points': [],
+           'question_explanation': note, 'coaching_tip': '', 'improved_answer_outline': [], 'reason_analysis': note}
+    value = enrich_feedback(raw, turn, signature)
+    value.update(score=None, scoring_excluded=True, duplicate_of=duplicate_of, exclusion_reason=note, reason_analysis=note)
     return value
 
 
@@ -156,27 +190,38 @@ def preparation_assessments(session):
 def assemble_report(session, feedback, summary, signature):
     groups = {}
     for item in feedback:
+        if item.get('scoring_excluded'):
+            continue
         groups.setdefault(item['question_id'], []).append(item)
-    first, latest, paired_original, comparison = [], [], [], []
+    first, latest, paired_original, paired_latest, comparison = [], [], [], [], []
     for qid, items in groups.items():
         ordered = sorted(items, key=lambda t: t['attempt'])
-        first.append(ordered[0])
-        if len(ordered) > 1:
-            original, retry = ordered[0], ordered[-1]
+        original = next((item for item in ordered if item['attempt'] == 1), None)
+        retries = [item for item in ordered if item['attempt'] > 1]
+        if original:
+            first.append(original)
+        if retries:
+            retry = retries[-1]
             latest.append(retry)
+        if original and retries:
             paired_original.append(original)
+            paired_latest.append(retry)
             old_total, new_total = aggregate([original])['total'], aggregate([retry])['total']
             comparison.append({'question_id': qid, 'first_attempt': original['attempt'], 'latest_attempt': retry['attempt'],
                                'original_total': old_total, 'latest_total': new_total, 'delta': round(new_total - old_total, 1)})
-    old_total, new_total = aggregate(paired_original)['total'], aggregate(latest)['total']
+    old_total, new_total = aggregate(paired_original)['total'], aggregate(paired_latest)['total']
     quality, coverage = preparation_assessments(session)
+    first_aggregate = aggregate(first)
+    excluded_count = sum(bool(item.get('scoring_excluded')) for item in feedback)
+    first_aggregate.update(excluded_duplicate_count=excluded_count,
+        scope_note=first_aggregate['scope_note'] + f' 已排除系统重复题 {excluded_count} 道；历史报告不自动改分。')
     return ReportV2(
         schema_version=2, rubric_version=RUBRIC_VERSION, report_id=uuid4().hex,
         input_fingerprint=signature, generated_at=datetime.now(timezone.utc).isoformat(),
         resume_quality=quality, requirement_coverage=coverage,
-        interview_performance={'first_attempt': aggregate(first), 'latest_retry': aggregate(latest) if latest else None,
-            'comparison': {'paired_question_count': len(latest), 'original_total': old_total, 'latest_total': new_total,
-                           'delta': round(new_total - old_total, 1) if latest else None, 'items': comparison},
-            'note': '首次面试与面后重答分开展示；改模型或评分规则属于新的评估版本，不能视为同条件进步。'},
+        interview_performance={'first_attempt': first_aggregate, 'latest_retry': aggregate(latest) if latest else None,
+            'comparison': {'paired_question_count': len(paired_latest), 'original_total': old_total, 'latest_total': new_total,
+                           'delta': round(new_total - old_total, 1) if paired_latest else None, 'items': comparison},
+            'note': '首次面试与面后重答分开展示；改模型或评分规则属于新的评估版本，不能视为同条件进步。表达维度仅评用户确认文字的组织结构，不评估真实口吃、语速或现场流畅度；ASR文字并非录音真值。'},
         question_feedback=feedback, **summary,
     ).model_dump()
